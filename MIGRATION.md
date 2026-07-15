@@ -78,48 +78,83 @@ baked into it — to everyone. So the design assumes the anon key **is** public:
 
 ---
 
-## Milestone 2 — NEXT (frontend wiring + deploy) — not yet written
+## Milestone 2 — DONE (frontend wired + deploy configured)
 
-The refactor keeps your ~30 components intact by re-implementing the existing
-`src/api/client.js` interface on top of Supabase. Planned changes:
+All code is written, it builds cleanly (`npm run build` ✓), and a local git
+commit exists on `main`. What changed:
 
-- **`src/api/client.js`** → Supabase adapter. Same method names
-  (`getEmployees`, `addDeduction`, …), new transport. Mapping:
+| File | Change |
+|------|--------|
+| `frontend/src/api/client.js` | Rewritten as a Supabase adapter — same method names, new transport (RPCs + selects). |
+| `frontend/src/context/AuthContext.jsx` | Supabase Auth (`signInWithPassword`, `onAuthStateChange`); role from `profiles`. |
+| `frontend/src/components/Login.jsx` | Logs in by **email** now. |
+| `frontend/src/components/UsersPage.jsx` | Email-based accounts; shows credentials once at creation (Supabase can't reveal stored passwords). |
+| `supabase/functions/manage-users/index.ts` | Edge Function for admin create/delete of login accounts (service_role stays server-side). |
+| `frontend/vite.config.js` | `base` from `VITE_BASE` (Actions sets it to `/<repo>/`). |
+| `frontend/package.json` | Adds `@supabase/supabase-js`, `gh-pages`, `homepage`, deploy scripts. |
+| `.github/workflows/deploy.yml` | Builds + publishes to Pages on push to `main`. |
 
-  | Old API call | New Supabase call |
-  |---|---|
-  | `getEmployees()` | `select` employees/years (+ assemble) |
-  | `addDeduction()` | `rpc('register_deduction', …)` |
-  | `deleteDeduction()` | `rpc('delete_deduction', …)` |
-  | `addEmployee()` / `updateEmployee()` | `rpc('create_employee' / 'update_employee', …)` |
-  | `toggleFreeze()` | `rpc('toggle_employee_freeze', …)` |
-  | `deleteEmployee()` | `delete` on employees (admin RLS) |
-  | `getSettings()` / `updateSettings()` | `select` / `upsert` settings |
-  | `getAuditLog()` | `select` audit_log (admin RLS) |
-  | JSON import (sync bridge) | `rpc('sync_employees', …)` |
+Adapter mapping: `getEmployees→list_employees`, `addDeduction→register_deduction`,
+`deleteDeduction→delete_deduction`, `add/updateEmployee→create/update_employee`,
+`toggleFreeze→toggle_employee_freeze`, `add/deleteYear→add_year/delete_year`,
+`bulkAddEmployees→bulk_add_employees`, `exportBackup→export_all`,
+JSON import→`sync_employees`, users→`manage-users` Edge Function.
 
-- **`src/context/AuthContext.jsx`** → Supabase Auth (`signInWithPassword`,
-  `onAuthStateChange`), role read from `profiles`.
-- **User Management (إدارة المستخدمين):** creating/deleting *login* accounts
-  needs the service_role key, which cannot live in the browser. So it goes in a
-  **Supabase Edge Function** (`manage-users`) that stores the service_role key
-  as a server secret and only runs for callers whose JWT is an admin.
-- **Custom confirm dialogs, glassmorphism login, JSON import button:** the app
-  already has `CustomConfirmModal`, `ConfirmDangerModal`, and `Login.jsx` — these
-  get reused/restyled rather than rebuilt.
-- **Delete the Express `backend/` folder** once the adapter is verified.
+> Note: the old Express `backend/` folder is now unused. It's kept for
+> reference (and is git-ignored for its data). Delete it whenever you're
+> confident the cloud version is working.
 
-### Deployment (GitHub Pages, no PAT in git config)
+---
 
-Use **GitHub Actions** rather than pushing from a local PAT:
+## DEPLOY RUNBOOK — the steps you run
 
-- `vite.config.js` → set `base: '/YOUR_REPO_NAME/'`.
-- `package.json` → `"homepage": "https://YOUR_USERNAME.github.io/YOUR_REPO_NAME"`.
-- `.github/workflows/deploy.yml` builds on push to `main` and publishes to
-  Pages, reading the anon key from repo **Secrets** (`VITE_SUPABASE_URL`,
-  `VITE_SUPABASE_ANON_KEY`) — nothing secret is committed.
-- You add the repo secrets and push; the deploy is automatic. I don't need, and
-  won't use, your PAT.
+I don't run these: pushing/publishing needs **your** GitHub token, and this is a
+non-interactive environment. Each step is yours (or one you approve).
 
-**Still needed from you for Milestone 2:** your **GitHub username** and the
-**repo name** you want (both were left as placeholders).
+### A. Deploy the Edge Function (for User Management)
+Requires the Supabase CLI (`npm i -g supabase`), then:
+```bash
+cd hr-2026-awqf
+supabase login
+supabase link --project-ref uzmhsesmszngkanjsjgy
+supabase functions deploy manage-users
+```
+
+### B. Create the GitHub repo and push
+1. Create a **new empty repo** on GitHub (no README) named e.g. `leave-system`.
+2. From the project folder:
+   ```bash
+   cd hr-2026-awqf
+   git remote add origin https://github.com/<YOUR_USERNAME>/<YOUR_REPO>.git
+   git push -u origin main
+   ```
+   When prompted for a password, paste your **freshly-created** GitHub PAT
+   (username = your GitHub username). Git will store it; you don't send it to me.
+
+### C. Add the build secrets + enable Pages
+In the new repo on GitHub:
+1. **Settings → Secrets and variables → Actions → New repository secret**, add:
+   - `VITE_SUPABASE_URL` = `https://uzmhsesmszngkanjsjgy.supabase.co`
+   - `VITE_SUPABASE_ANON_KEY` = your `eyJ...` anon key
+2. **Settings → Pages → Build and deployment → Source = GitHub Actions**.
+3. Push (or re-run the workflow from the **Actions** tab). When it goes green:
+
+```
+https://<YOUR_USERNAME>.github.io/<YOUR_REPO>/
+```
+
+### D. First login
+Use the admin email/password you created in Supabase (Milestone 1, step 3).
+
+---
+
+### Alternative to B–C: manual `gh-pages` (if you prefer)
+```powershell
+cd hr-2026-awqf/frontend
+$env:VITE_SUPABASE_URL="https://uzmhsesmszngkanjsjgy.supabase.co"
+$env:VITE_SUPABASE_ANON_KEY="eyJ...your-anon..."
+$env:VITE_BASE="/<YOUR_REPO>/"
+npm run build
+npm run deploy   # pushes dist/ to the gh-pages branch (asks for your PAT)
+```
+Then set **Settings → Pages → Source = Deploy from branch → `gh-pages`**.
