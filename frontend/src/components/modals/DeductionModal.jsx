@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { calculateDeductionDays } from '../../utils/deductionDays';
-import { printDeductionLetter } from '../../utils/printDeductionLetter';
 import { getLibyaDateStr } from '../../utils/libyaTime';
 import CustomConfirmModal from './CustomConfirmModal';
 
@@ -263,15 +262,6 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
                                                 {item.note || '—'}
                                             </td>
                                             <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-report"
-                                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', marginLeft: isAdmin ? '0.35rem' : 0 }}
-                                                    onClick={() => printDeductionLetter(employee, item)}
-                                                    title="طباعة إشعار خصم الإجازة"
-                                                >
-                                                    <i className="fas fa-file-lines"></i>
-                                                </button>
                                                 {isAdmin && (
                                                     <button
                                                         type="button"

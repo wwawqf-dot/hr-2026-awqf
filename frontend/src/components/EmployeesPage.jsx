@@ -8,7 +8,6 @@ import ExpiringLeavesWidget from './ExpiringLeavesWidget';
 import EmployeeFormModal from './modals/EmployeeFormModal';
 import DeductionModal from './modals/DeductionModal';
 import ReportModal from './modals/ReportModal';
-import ClearanceModal from './modals/ClearanceModal';
 import StatementModal from './modals/StatementModal';
 import FreezeModal from './modals/FreezeModal';
 import CustomConfirmModal from './modals/CustomConfirmModal';
@@ -69,9 +68,6 @@ export default function EmployeesPage() {
                 </button>
                 <button className="btn btn-report" onClick={() => setModal({ type: 'statement' })}>
                     كشف حساب فردي <i className="fas fa-file-invoice"></i>
-                </button>
-                <button className="btn btn-report" onClick={() => setModal({ type: 'clearance' })}>
-                    إخلاء طرف موظف <i className="fas fa-file-export"></i>
                 </button>
                 {isAdmin && (
                     <button className="btn btn-report" onClick={() => setModal({ type: 'freeze' })}>
@@ -142,9 +138,6 @@ export default function EmployeesPage() {
             )}
             {modal?.type === 'statement' && (
                 <StatementModal employees={employees} onClose={closeModal} />
-            )}
-            {modal?.type === 'clearance' && (
-                <ClearanceModal employees={employees} onClose={closeModal} />
             )}
             {modal?.type === 'freeze' && isAdmin && (
                 <FreezeModal employees={employees} onToggleFreeze={toggleFreeze} onClose={closeModal} />
