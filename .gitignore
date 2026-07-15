@@ -1,0 +1,21 @@
+node_modules/
+frontend/dist/
+
+# Secrets — NEVER commit. Only .env.example (with placeholders) is tracked.
+.env
+.env.*
+!.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+backend/.env
+
+# Employee PII — real data must never be pushed to a public repo.
+backend/backups/
+backend/database/
+backend/database/*.db
+backend/database/*.db-*
+*.log
+.DS_Store
+launcher/bin/
+launcher/obj/
