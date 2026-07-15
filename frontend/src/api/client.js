@@ -28,6 +28,32 @@ async function listYears() {
     return { years: (data || []).map((r) => r.year).sort((a, b) => Number(a) - Number(b)) };
 }
 
+// Deductions ending within the next N days (dashboard widget).
+async function listExpiringLeaves(windowDays = 7) {
+    const today = new Date();
+    const ceiling = new Date(today);
+    ceiling.setDate(ceiling.getDate() + windowDays);
+    const fmt = (d) => d.toISOString().slice(0, 10);
+
+    const { data, error } = await supabase
+        .from('deductions')
+        .select('id, end_date, start_date, days, employee:employees(name, job_number)')
+        .gte('end_date', fmt(today))
+        .lte('end_date', fmt(ceiling))
+        .order('end_date');
+    if (error) throw new ApiError(error.message, 400);
+
+    return {
+        expiring: (data || []).map((d) => ({
+            name: d.employee?.name || '',
+            job_number: d.employee?.job_number || '',
+            end_date: d.end_date,
+            start_date: d.start_date,
+            days: d.days,
+        })),
+    };
+}
+
 export const api = {
     // ---- Employees & roster ------------------------------------------
     getEmployees: () => rpc('list_employees'),
@@ -55,6 +81,7 @@ export const api = {
     deleteYear: (year) => rpc('delete_year', { p_year: String(year) }),
 
     // ---- Deductions ---------------------------------------------------
+    getExpiringLeaves: () => listExpiringLeaves(),
     addDeduction: (employeeId, payload) =>
         rpc('register_deduction', { p_employee_id: employeeId, p_payload: payload }),
     deleteDeduction: (deductionId) => rpc('delete_deduction', { p_deduction_id: deductionId }),
