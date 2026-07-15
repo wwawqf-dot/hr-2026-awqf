@@ -3,6 +3,7 @@ import { useLeaveData } from '../hooks/useLeaveData';
 import PageHeader from './PageHeader';
 import ConfirmDangerModal from './modals/ConfirmDangerModal';
 import { parseEmployeesExcel } from '../utils/parseEmployeesExcel';
+import { getLibyaDateStr, getLibyaYear } from '../utils/libyaTime';
 
 export default function SettingsPage() {
     const {
@@ -80,7 +81,7 @@ export default function SettingsPage() {
         const dataStr = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data, null, 2));
         const a = document.createElement('a');
         a.setAttribute('href', dataStr);
-        a.setAttribute('download', 'نسخة_تصدير_منظومة_الإجازات_' + new Date().toISOString().split('T')[0] + '.json');
+        a.setAttribute('download', 'نسخة_تصدير_منظومة_الإجازات_' + getLibyaDateStr() + '.json');
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -284,7 +285,7 @@ export default function SettingsPage() {
                             type="number"
                             value={newYear}
                             onChange={(e) => setNewYear(e.target.value)}
-                            placeholder={String(new Date().getFullYear())}
+                            placeholder={getLibyaYear()}
                         />
                     </div>
                     <div className="form-group">

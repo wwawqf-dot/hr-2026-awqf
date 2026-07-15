@@ -1,23 +1,24 @@
 import { useEffect, useState } from 'react';
+import { getLibyaTime } from '../utils/libyaTime';
 
-// Live, auto-advancing clock driven by the machine's real time. Ticks every
-// second and clears its interval on unmount (no memory leak). This is the
-// system's "current today" — the frozen virtual date has been retired.
+// Live, auto-advancing clock showing Libya time. Ticks every second.
 export default function LiveClock() {
-    const [now, setNow] = useState(new Date());
+    const [now, setNow] = useState(getLibyaTime);
 
     useEffect(() => {
-        const id = setInterval(() => setNow(new Date()), 1000);
+        const id = setInterval(() => setNow(getLibyaTime()), 1000);
         return () => clearInterval(id);
     }, []);
 
     const dateStr = now.toLocaleDateString('ar-LY', {
+        timeZone: 'Africa/Tripoli',
         weekday: 'long',
         year: 'numeric',
         month: 'long',
         day: 'numeric',
     });
     const timeStr = now.toLocaleTimeString('ar-LY', {
+        timeZone: 'Africa/Tripoli',
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',

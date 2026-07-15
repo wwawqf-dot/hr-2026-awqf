@@ -30,8 +30,9 @@ async function listYears() {
 
 // Deductions ending within the next N days (dashboard widget).
 async function listExpiringLeaves(windowDays = 7) {
-    const today = new Date();
-    const ceiling = new Date(today);
+    const { getLibyaTime } = await import('../utils/libyaTime');
+    const today = getLibyaTime();
+    const ceiling = getLibyaTime();
     ceiling.setDate(ceiling.getDate() + windowDays);
     const fmt = (d) => d.toISOString().slice(0, 10);
 

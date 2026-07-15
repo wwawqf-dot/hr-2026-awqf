@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { calculateDeductionDays } from '../../utils/deductionDays';
 import { printDeductionLetter } from '../../utils/printDeductionLetter';
+import { getLibyaDateStr } from '../../utils/libyaTime';
 import CustomConfirmModal from './CustomConfirmModal';
 
 const RETRO_LIMIT_DAYS = 40;
@@ -14,9 +15,7 @@ function parseLocalDate(str) {
 }
 
 function localTodayStr() {
-    const d = new Date();
-    const p = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    return getLibyaDateStr();
 }
 
 function daysBetween(fromStr, toStr) {

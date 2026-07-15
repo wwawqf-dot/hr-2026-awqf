@@ -1,4 +1,5 @@
 import { formatDateDisplay } from './formatDate';
+import { getLibyaTime } from './libyaTime';
 
 // Ported from the original standalone HTML file's generateReport(), kept
 // pixel-identical for the printed output while sourcing data from the
@@ -12,7 +13,7 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
     }
 
     const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
-    const formattedDate = new Date().toLocaleDateString('ar-LY', dateOptions);
+    const formattedDate = getLibyaTime().toLocaleDateString('ar-LY', { ...dateOptions, timeZone: 'Africa/Tripoli' });
     const carriedLabel = `المرحل حتى ${formatDateDisplay(openingBalanceDate)}`;
 
     // The comprehensive report grows by 3 columns per financial year, so a

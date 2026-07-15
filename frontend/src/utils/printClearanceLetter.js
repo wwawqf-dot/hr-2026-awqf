@@ -1,4 +1,5 @@
 import { formatDateDisplay } from './formatDate';
+import { getLibyaTime } from './libyaTime';
 
 function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -18,7 +19,8 @@ export function printClearanceLetter(employee, { destination, endServiceDate, fi
         return;
     }
 
-    const printDate = new Date().toLocaleDateString('ar-LY', {
+    const printDate = getLibyaTime().toLocaleDateString('ar-LY', {
+        timeZone: 'Africa/Tripoli',
         year: 'numeric',
         month: 'long',
         day: 'numeric',

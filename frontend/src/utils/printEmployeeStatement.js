@@ -1,4 +1,5 @@
 import { formatDateDisplay } from './formatDate';
+import { getLibyaTime } from './libyaTime';
 
 // Computes an employee's current net cumulative balance the same way the
 // main employees table does: initial carried-forward plus, for every tracked
@@ -30,7 +31,8 @@ export function printEmployeeStatement(employee) {
         return;
     }
 
-    const formattedDate = new Date().toLocaleDateString('ar-LY', {
+    const formattedDate = getLibyaTime().toLocaleDateString('ar-LY', {
+        timeZone: 'Africa/Tripoli',
         year: 'numeric',
         month: 'long',
         day: 'numeric',
