@@ -1,4 +1,5 @@
 import PageHeader from './PageHeader';
+import UserGuide from './UserGuide';
 
 export default function Regulations() {
     return (
@@ -11,7 +12,7 @@ export default function Regulations() {
                         <i className="fas fa-book-open"></i>
                     </div>
                     <h3>دليل استخدام المنظومة</h3>
-                    <p>سيتم إضافة شرح مفصل لكيفية استخدام المنظومة وإدخال البيانات قريباً...</p>
+                    <UserGuide />
                 </div>
 
                 <div

@@ -518,6 +518,118 @@ code {
     margin: 0;
 }
 
+/* ---------- User guide accordion ---------- */
+.user-guide {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.guide-item {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: var(--transition-smooth);
+}
+.guide-item.open {
+    border-color: rgba(16, 185, 129, 0.35);
+}
+.guide-summary {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-main);
+    font-family: inherit;
+    font-size: 0.98rem;
+    font-weight: 700;
+    text-align: right;
+    padding: 1rem 1.25rem;
+    transition: var(--transition-smooth);
+}
+.guide-summary:hover { color: var(--emerald); }
+.guide-item.open .guide-summary { color: var(--emerald); }
+.guide-chevron {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    transition: transform 0.3s ease;
+}
+.guide-item.open .guide-chevron {
+    transform: rotate(180deg);
+    color: var(--emerald);
+}
+.guide-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease;
+}
+.guide-body-inner {
+    padding: 0 1.25rem 1.25rem;
+}
+.guide-intro {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.85;
+    margin: 0 0 1rem;
+}
+.guide-points {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+.guide-point {
+    background: rgba(16, 185, 129, 0.04);
+    border-right: 3px solid var(--emerald);
+    border-radius: 6px;
+    padding: 0.6rem 0.9rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.85;
+}
+.guide-point strong {
+    color: var(--emerald);
+    font-weight: 800;
+}
+
+/* Placeholder screenshots: a "polaroid" card with a dashed border so it's
+   obvious this is a stand-in until the real screenshot is dropped in. */
+.guide-img-frame {
+    max-width: 320px;
+    margin: 1.1rem auto 0;
+    padding: 0.6rem 0.6rem 0.9rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1.5px dashed rgba(255, 255, 255, 0.25);
+    border-radius: 14px;
+    transform: rotate(-1deg);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.guide-img {
+    display: block;
+    width: 100%;
+    height: 170px;
+    object-fit: cover;
+    border-radius: 8px;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.03) 0 10px,
+        rgba(255, 255, 255, 0.06) 10px 20px
+    );
+}
+.guide-img-frame figcaption {
+    margin-top: 0.5rem;
+    text-align: center;
+    font-size: 0.78rem;
+    font-style: italic;
+    color: var(--text-muted);
+}
+
 @media (max-width: 768px) {
     .app-shell { padding: 1rem; }
     .header { padding: 1.2rem; }
