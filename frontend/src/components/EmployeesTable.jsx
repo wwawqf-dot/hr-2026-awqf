@@ -32,17 +32,20 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                         {years.map((year) => (
                             <th key={year} colSpan={4} className="year-group-header">سنة {year}</th>
                         ))}
-                        <th rowSpan={2} style={{ textAlign: 'center', minWidth: 150 }}>الإجراءات</th>
+                        <th rowSpan={2} className="actions-col" style={{ textAlign: 'center', minWidth: 150 }}>
+                            الإجراءات
+                        </th>
                     </tr>
                     <tr>
                         {years.map((year) => (
                             <Fragment key={year}>
-                                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                    (الصافي التراكمي للسنوات السابقة) حتى تاريخ 31/12/{year - 1}
+                                <th className="year-opening-header">
+                                    (الصافي التراكمي للسنوات السابقة)
+                                    <span className="header-sub">حتى تاريخ 31/12/{year - 1}</span>
                                 </th>
-                                <th style={{ textAlign: 'center' }}>مضاف {year}</th>
-                                <th style={{ textAlign: 'center' }}>مخصوم {year}</th>
-                                <th style={{ textAlign: 'center' }}>الصافي التراكمي {year}</th>
+                                <th className="year-col-header">مضاف {year}</th>
+                                <th className="year-col-header">مخصوم {year}</th>
+                                <th className="year-col-header">الصافي التراكمي {year}</th>
                             </Fragment>
                         ))}
                     </tr>
@@ -110,7 +113,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                                         </td>
                                     </Fragment>
                                 ))}
-                                <td style={{ textAlign: 'center' }}>
+                                <td className="actions-col" style={{ textAlign: 'center' }}>
                                     <div className="action-buttons">
                                         <button
                                             className="btn btn-primary"
