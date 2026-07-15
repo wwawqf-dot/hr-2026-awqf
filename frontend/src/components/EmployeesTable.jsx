@@ -1,9 +1,8 @@
 import { Fragment } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { computeBreakdown } from '../utils/leaveCalc';
-import { formatDateDisplay } from '../utils/formatDate';
+import { computeYearlyLedger } from '../utils/leaveCalc';
 
-export default function EmployeesTable({ employees, years, openingBalanceDate, onDeduct, onEdit, onDelete }) {
+export default function EmployeesTable({ employees, years, onDeduct, onEdit, onDelete }) {
     const { isAdmin } = useAuth();
 
     // Push frozen employees to the very bottom while preserving the original
@@ -30,31 +29,27 @@ export default function EmployeesTable({ employees, years, openingBalanceDate, o
                         <th rowSpan={2} style={{ minWidth: 250 }}>الإسم الكامل</th>
                         <th rowSpan={2}>الرقم الوطني</th>
                         <th rowSpan={2}>الصفة الوظيفية</th>
-                        <th rowSpan={2} className="fixed-header" style={{ minWidth: 170 }}>
-                            الرصيد التراكمي (للسنوات السابقة)
-                            <br />
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
-                                (حتى تاريخ {formatDateDisplay(openingBalanceDate)})
-                            </span>
-                        </th>
                         {years.map((year) => (
-                            <th key={year} colSpan={3} className="year-group-header">سنة {year}</th>
+                            <th key={year} colSpan={4} className="year-group-header">سنة {year}</th>
                         ))}
                         <th rowSpan={2} style={{ textAlign: 'center', minWidth: 150 }}>الإجراءات</th>
                     </tr>
                     <tr>
                         {years.map((year) => (
                             <Fragment key={year}>
-                                <th style={{ textAlign: 'center' }}>المضاف</th>
-                                <th style={{ textAlign: 'center' }}>المخصوم</th>
-                                <th style={{ textAlign: 'center' }}>الصافي التراكمي</th>
+                                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                    (الصافي التراكمي للسنوات السابقة) حتى تاريخ 31/12/{year - 1}
+                                </th>
+                                <th style={{ textAlign: 'center' }}>مضاف {year}</th>
+                                <th style={{ textAlign: 'center' }}>مخصوم {year}</th>
+                                <th style={{ textAlign: 'center' }}>الصافي التراكمي {year}</th>
                             </Fragment>
                         ))}
                     </tr>
                 </thead>
                 <tbody>
                     {sortedEmployees.map((emp, index) => {
-                        const breakdown = computeBreakdown(emp, years);
+                        const ledger = computeYearlyLedger(emp, years);
                         return (
                             <tr key={emp.id} style={emp.is_frozen ? { opacity: 0.7 } : undefined}>
                                 <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{index + 1}</td>
@@ -96,13 +91,13 @@ export default function EmployeesTable({ employees, years, openingBalanceDate, o
                                 </td>
                                 <td style={{ color: 'var(--text-muted)' }}>{emp.national_id || '-'}</td>
                                 <td>{emp.job_title || '-'}</td>
-                                <td style={{ color: '#60a5fa', fontWeight: 'bold', textAlign: 'center' }}>
-                                    {emp.initial_carried_forward || 0}
-                                </td>
-                                {breakdown.map((b) => (
-                                    <Fragment key={b.year}>
-                                        <td style={{ color: '#34d399', textAlign: 'center' }}>{b.added}</td>
-                                        <td style={{ color: 'var(--danger)', textAlign: 'center' }}>{b.deducted}</td>
+                                {ledger.map((row) => (
+                                    <Fragment key={row.year}>
+                                        <td style={{ color: '#60a5fa', fontWeight: 'bold', textAlign: 'center' }}>
+                                            {row.opening}
+                                        </td>
+                                        <td style={{ color: '#34d399', textAlign: 'center' }}>{row.added}</td>
+                                        <td style={{ color: 'var(--danger)', textAlign: 'center' }}>{row.deducted}</td>
                                         <td
                                             style={{
                                                 color: '#f59e0b',
@@ -111,7 +106,7 @@ export default function EmployeesTable({ employees, years, openingBalanceDate, o
                                                 textAlign: 'center',
                                             }}
                                         >
-                                            {b.runningNet}
+                                            {row.closing}
                                         </td>
                                     </Fragment>
                                 ))}

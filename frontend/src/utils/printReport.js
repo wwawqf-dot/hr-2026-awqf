@@ -1,5 +1,6 @@
 import { formatDateDisplay } from './formatDate';
 import { getLibyaTime } from './libyaTime';
+import { computeYearlyLedger } from './leaveCalc';
 
 // Ported from the original standalone HTML file's generateReport(), kept
 // pixel-identical for the printed output while sourcing data from the
@@ -16,11 +17,13 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
     const formattedDate = getLibyaTime().toLocaleDateString('ar-LY', { ...dateOptions, timeZone: 'Africa/Tripoli' });
     const carriedLabel = `المرحل حتى ${formatDateDisplay(openingBalanceDate)}`;
 
-    // The comprehensive report grows by 3 columns per financial year, so a
-    // fixed font size either wastes space (one year) or overflows the page
-    // (many years). Scale it down as the column count grows instead.
+    // The comprehensive report grows by 4 columns per financial year (opening
+    // balance, added, deducted, closing balance — each year is now a
+    // self-contained block), so a fixed font size either wastes space (one
+    // year) or overflows the page (many years). Scale it down as the column
+    // count grows instead.
     const fixedColumnCount = 4; // #, name, national id, job title
-    const yearColumnCount = isAllYears ? 1 + years.length * 3 : 4;
+    const yearColumnCount = isAllYears ? years.length * 4 : 4;
     const totalColumnCount = fixedColumnCount + yearColumnCount;
 
     let tableFontSize = 14;
@@ -117,9 +120,17 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
     `;
 
     if (isAllYears) {
-        html += `<th>${carriedLabel}</th>`;
+        // Every financial year is a self-contained 4-column block: its own
+        // opening balance (= the previous year's closing balance) followed by
+        // added/deducted/closing, so no column needs to be read against a
+        // separate leading column further left in the table.
         years.forEach((year) => {
-            html += `<th>مضاف ${year}</th><th>مخصوم ${year}</th><th>الصافي التراكمي ${year}</th>`;
+            html += `
+                <th style="white-space: nowrap;">(الصافي التراكمي للسنوات السابقة) حتى تاريخ 31/12/${year - 1}</th>
+                <th>مضاف ${year}</th>
+                <th>مخصوم ${year}</th>
+                <th>الصافي التراكمي ${year}</th>
+            `;
         });
     } else {
         html += `
@@ -144,18 +155,13 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
         `;
 
         if (isAllYears) {
-            html += `<td>${initialCarried === 0 ? '0' : initialCarried}</td>`;
-            let runningNet = initialCarried;
-
-            years.forEach((year) => {
-                const added = parseFloat(emp.years_data[year]?.added) || 0;
-                const deducted = parseFloat(emp.years_data[year]?.deducted) || 0;
-                runningNet = runningNet + added - deducted;
-
+            const ledger = computeYearlyLedger(emp, years);
+            ledger.forEach((row) => {
                 html += `
-                    <td>${added === 0 ? '-' : added}</td>
-                    <td>${deducted === 0 ? '-' : deducted}</td>
-                    <td>${runningNet}</td>
+                    <td>${row.opening === 0 ? '0' : row.opening}</td>
+                    <td>${row.added === 0 ? '-' : row.added}</td>
+                    <td>${row.deducted === 0 ? '-' : row.deducted}</td>
+                    <td>${row.closing}</td>
                 `;
             });
         } else {

@@ -94,7 +94,6 @@ export default function EmployeesPage() {
                 <EmployeesTable
                     employees={filtered}
                     years={years}
-                    openingBalanceDate={settings.openingBalanceDate}
                     onDeduct={(emp) => setModal({ type: 'deduction', employee: emp })}
                     onEdit={(emp) => setModal({ type: 'editEmployee', employee: emp })}
                     onDelete={handleDeleteEmployee}
