@@ -111,10 +111,17 @@ export function printEmployeeStatement(employee) {
                 @page { margin: 12mm; size: A4 portrait; }
                 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 0; }
                 .no-print { display: none; }
-                table { border-collapse: collapse !important; border: 2px solid #000 !important; }
-                th, td { border: 1px solid #000 !important; }
-                tr > *:last-child { border-left: 2px solid #000 !important; }
-                tr > *:first-child { border-right: 2px solid #000 !important; }
+                table {
+                    box-sizing: border-box !important;
+                    border-collapse: collapse !important;
+                    width: 98% !important;
+                    margin: 0 auto !important;
+                    border: 2px solid #000 !important;
+                }
+                th, td {
+                    border: 1px solid #000 !important;
+                    padding: 8px !important;
+                }
             }
         </style>
     </head>

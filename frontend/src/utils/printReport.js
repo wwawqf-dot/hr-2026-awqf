@@ -64,23 +64,27 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
 
             @media print {
                 @page { size: A4 landscape; margin: 10mm; }
-                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100%; padding: 0; }
+                body {
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                    width: 100%;
+                    padding: 0;
+                    box-sizing: border-box !important;
+                }
                 .no-print { display: none; }
-                /* Force every outer/inner border to render — some browsers drop
-                   the far-edge (last column, RTL left side) border when the
-                   table hits the exact printable page width. Pulling the width
-                   back to 99% and centering keeps both edges inside the margin
-                   so no border is clipped. */
+
+                /* ===== Table container: prevent side-bleed ===== */
                 table {
+                    box-sizing: border-box !important;
                     border-collapse: collapse !important;
-                    width: 99% !important;
-                    margin-left: auto !important;
-                    margin-right: auto !important;
+                    width: 98% !important;
+                    margin: 0 auto !important;
                     border: 2px solid #000 !important;
                 }
-                th, td { border: 1px solid #000 !important; }
-                tr > *:last-child { border-left: 2px solid #000 !important; }
-                tr > *:first-child { border-right: 2px solid #000 !important; }
+                th, td {
+                    border: 1px solid #000 !important;
+                    padding: 8px !important;
+                }
                 /* Keep table rows and the signatures block intact so a row or
                    the signatures never break alone onto an empty trailing page. */
                 tr { page-break-inside: avoid !important; }
