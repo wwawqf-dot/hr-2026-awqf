@@ -4,7 +4,7 @@
   "description": "Frontend for the Employee Leave Management System",
   "private": true,
   "type": "module",
-  "homepage": "https://YOUR_USERNAME.github.io/YOUR_REPO_NAME",
+  "homepage": "https://wwawqf-dot.github.io/hr-2026-awqf",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
