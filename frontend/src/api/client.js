@@ -1,8 +1,3 @@
-// Supabase-backed adapter that preserves the exact interface the old
-// Express `api` client exposed, so the rest of the app (useLeaveData,
-// pages, modals) keeps working unchanged. Every sensitive write goes
-// through a SECURITY DEFINER RPC (see supabase/schema.sql) that enforces
-// the business rules server-side; the browser cannot bypass them.
 import { supabase } from '../supabaseClient';
 
 class ApiError extends Error {
@@ -12,8 +7,6 @@ class ApiError extends Error {
     }
 }
 
-// Turn a Supabase { data, error } into either data or a thrown ApiError
-// carrying the Arabic message raised by the RPC.
 function must({ data, error }, fallback = 'حدث خطأ غير متوقع') {
     if (error) throw new ApiError(error.message || fallback, error.status || 400);
     return data;
@@ -28,17 +21,11 @@ async function listYears() {
     return { years: (data || []).map((r) => r.year).sort((a, b) => Number(a) - Number(b)) };
 }
 
-// Deductions ending within the next N days (dashboard widget).
 async function listExpiringLeaves(windowDays = 7) {
     const { getLibyaTime } = await import('../utils/libyaTime');
     const today = getLibyaTime();
     const ceiling = getLibyaTime();
     ceiling.setDate(ceiling.getDate() + windowDays);
-    // Format from local date components, NOT toISOString(): getLibyaTime()
-    // encodes Libya wall-clock time in a local-timezone Date, and
-    // toISOString() converts to UTC — which shifts the date by a day for
-    // machines ahead of UTC during the first hours after midnight
-    // (confirmed reproducible: returned yesterday's date at 01:00 Libya).
     const fmt = (d) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -117,10 +104,7 @@ export const api = {
         return api.getSettings();
     },
 
-    // ---- Users (إدارة المستخدمين) ------------------------------------
-    // Listing reads the profiles table (admin RLS). Creating/deleting a
-    // *login* account needs the service_role key, so it runs in the
-    // `manage-users` Edge Function (server-side), never in the browser.
+    // ---- Users --------------------------------------------------------
     getUsers: async () => {
         const rows = must(
             await supabase.from('profiles').select('id, username, role, created_at').order('created_at')
@@ -130,27 +114,16 @@ export const api = {
                 id: u.id,
                 username: u.username || '',
                 role: u.role,
-                password: '', // Supabase never reveals passwords; shown as "—".
+                password: '',
                 createdAt: u.created_at,
             })),
         };
     },
-    addUser: async (payload) => {
-        // payload.username is treated as the login email.
-        const { data, error } = await supabase.functions.invoke('manage-users', {
-            body: { action: 'create', email: payload.username, password: payload.password },
-        });
-        if (error) throw new ApiError(await readFnError(error), 400);
-        if (data?.error) throw new ApiError(data.error, 400);
-        return { user: data.user };
+    addUser: async () => {
+        throw new ApiError('إدارة المستخدمين تتم من لوحة تحكم Supabase (Authentication > Users).', 400);
     },
-    deleteUser: async (id) => {
-        const { data, error } = await supabase.functions.invoke('manage-users', {
-            body: { action: 'delete', id },
-        });
-        if (error) throw new ApiError(await readFnError(error), 400);
-        if (data?.error) throw new ApiError(data.error, 400);
-        return { message: 'تم حذف المستخدم' };
+    deleteUser: async () => {
+        throw new ApiError('إدارة المستخدمين تتم من لوحة تحكم Supabase (Authentication > Users).', 400);
     },
 
     // ---- Audit log ----------------------------------------------------
@@ -174,7 +147,7 @@ export const api = {
         };
     },
 
-    // ---- Backup / JSON sync bridge -----------------------------------
+    // ---- Backup -------------------------------------------------------
     exportBackup: () => rpc('export_all'),
     importBackup: async (payload) => {
         const result = await rpc('sync_employees', { p_payload: payload });
@@ -183,8 +156,6 @@ export const api = {
             ...result,
         };
     },
-    // Supabase runs automatic daily backups of the whole project, so an
-    // ad-hoc "server backup" is a downloadable cloud snapshot.
     serverBackup: async () => {
         await rpc('export_all');
         return { message: 'قاعدة البيانات على Supabase تُنسخ احتياطياً تلقائياً. استخدم "تصدير JSON" لأخذ نسخة محلية.' };
@@ -194,15 +165,5 @@ export const api = {
         return { message: 'تم حذف جميع سجلات الموظفين بنجاح' };
     },
 };
-
-// Edge Function errors arrive as a FunctionsHttpError whose real message
-// is in the JSON response body; fall back to the generic message.
-async function readFnError(error) {
-    try {
-        const body = await error.context?.json?.();
-        if (body?.error) return body.error;
-    } catch { /* ignore */ }
-    return error.message || 'تعذّر تنفيذ العملية على الخادم';
-}
 
 export { ApiError };
