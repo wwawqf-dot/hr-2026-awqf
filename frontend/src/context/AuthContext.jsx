@@ -15,7 +15,7 @@ async function loadProfile(authUser) {
         id: authUser.id,
         email: authUser.email,
         username: data?.username || authUser.email,
-        role: data?.role || 'data_entry',
+        role: data?.role || 'viewer',
     };
 }
 

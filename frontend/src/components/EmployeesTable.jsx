@@ -1,12 +1,10 @@
 import { Fragment } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { computeYearlyLedger } from '../utils/leaveCalc';
 
 export default function EmployeesTable({ employees, years, onDeduct, onEdit, onDelete }) {
-    const { isAdmin } = useAuth();
+    const { canDeduct, canEdit, canDelete } = usePermissions();
 
-    // Push frozen employees to the very bottom while preserving the original
-    // order within each group (Array.prototype.sort is stable in modern JS).
     const sortedEmployees = [...employees].sort(
         (a, b) => (a.is_frozen ? 1 : 0) - (b.is_frozen ? 1 : 0)
     );
@@ -115,41 +113,43 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                                 ))}
                                 <td className="actions-col" style={{ textAlign: 'center' }}>
                                     <div className="action-buttons">
-                                        <button
-                                            className="btn btn-primary"
-                                            style={{
-                                                padding: '0.6rem 1.1rem',
-                                                fontSize: '1.05rem',
-                                                fontWeight: 700,
-                                                transform: 'scale(1.1)',
-                                                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.45)',
-                                                gap: '0.4rem',
-                                            }}
-                                            onClick={() => onDeduct(emp)}
-                                            title="خصم إجازة"
-                                        >
-                                            <i className="fas fa-minus-circle" style={{ fontSize: '1.2rem' }}></i>
-                                            خصم
-                                        </button>
-                                        {isAdmin && (
-                                            <>
-                                                <button
-                                                    className="btn btn-warning-outline"
-                                                    style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
-                                                    onClick={() => onEdit(emp)}
-                                                    title="تعديل"
-                                                >
-                                                    <i className="fas fa-edit"></i>
-                                                </button>
-                                                <button
-                                                    className="btn btn-danger-outline"
-                                                    style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
-                                                    onClick={() => onDelete(emp)}
-                                                    title="حذف"
-                                                >
-                                                    <i className="fas fa-trash"></i>
-                                                </button>
-                                            </>
+                                        {canDeduct && (
+                                            <button
+                                                className="btn btn-primary"
+                                                style={{
+                                                    padding: '0.6rem 1.1rem',
+                                                    fontSize: '1.05rem',
+                                                    fontWeight: 700,
+                                                    transform: 'scale(1.1)',
+                                                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.45)',
+                                                    gap: '0.4rem',
+                                                }}
+                                                onClick={() => onDeduct(emp)}
+                                                title="خصم إجازة"
+                                            >
+                                                <i className="fas fa-minus-circle" style={{ fontSize: '1.2rem' }}></i>
+                                                خصم
+                                            </button>
+                                        )}
+                                        {canEdit && (
+                                            <button
+                                                className="btn btn-warning-outline"
+                                                style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
+                                                onClick={() => onEdit(emp)}
+                                                title="تعديل"
+                                            >
+                                                <i className="fas fa-edit"></i>
+                                            </button>
+                                        )}
+                                        {canDelete && (
+                                            <button
+                                                className="btn btn-danger-outline"
+                                                style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
+                                                onClick={() => onDelete(emp)}
+                                                title="حذف"
+                                            >
+                                                <i className="fas fa-trash"></i>
+                                            </button>
                                         )}
                                     </div>
                                 </td>

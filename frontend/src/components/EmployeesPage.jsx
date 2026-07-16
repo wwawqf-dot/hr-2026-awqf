@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { useLeaveData } from '../hooks/useLeaveData';
 import PageHeader from './PageHeader';
 import SearchBar from './SearchBar';
@@ -13,7 +13,7 @@ import FreezeModal from './modals/FreezeModal';
 import CustomConfirmModal from './modals/CustomConfirmModal';
 
 export default function EmployeesPage() {
-    const { isAdmin } = useAuth();
+    const { canAdd, canFreeze, canEdit } = usePermissions();
     const {
         employees, years, settings, loading, error,
         addEmployee, updateEmployee, deleteEmployee, toggleFreeze,
@@ -69,14 +69,16 @@ export default function EmployeesPage() {
                 <button className="btn btn-report" onClick={() => setModal({ type: 'statement' })}>
                     كشف حساب فردي <i className="fas fa-file-invoice"></i>
                 </button>
-                {isAdmin && (
+                {canFreeze && (
                     <button className="btn btn-report" onClick={() => setModal({ type: 'freeze' })}>
                         تجميد سجل موظف <i className="fas fa-snowflake"></i>
                     </button>
                 )}
-                <button className="btn btn-primary" onClick={() => setModal({ type: 'addEmployee' })}>
-                    <i className="fas fa-user-plus"></i> إضافة موظف
-                </button>
+                {canAdd && (
+                    <button className="btn btn-primary" onClick={() => setModal({ type: 'addEmployee' })}>
+                        <i className="fas fa-user-plus"></i> إضافة موظف
+                    </button>
+                )}
             </PageHeader>
 
             <ExpiringLeavesWidget />
@@ -109,7 +111,7 @@ export default function EmployeesPage() {
                     onSubmit={addEmployee}
                 />
             )}
-            {modal?.type === 'editEmployee' && isAdmin && activeEmployee && (
+            {modal?.type === 'editEmployee' && canEdit && activeEmployee && (
                 <EmployeeFormModal
                     mode="edit"
                     employee={activeEmployee}
@@ -138,7 +140,7 @@ export default function EmployeesPage() {
             {modal?.type === 'statement' && (
                 <StatementModal employees={employees} onClose={closeModal} />
             )}
-            {modal?.type === 'freeze' && isAdmin && (
+            {modal?.type === 'freeze' && canFreeze && (
                 <FreezeModal employees={employees} onToggleFreeze={toggleFreeze} onClose={closeModal} />
             )}
             {confirmEmp && (
