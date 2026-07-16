@@ -34,7 +34,13 @@ async function listExpiringLeaves(windowDays = 7) {
     const today = getLibyaTime();
     const ceiling = getLibyaTime();
     ceiling.setDate(ceiling.getDate() + windowDays);
-    const fmt = (d) => d.toISOString().slice(0, 10);
+    // Format from local date components, NOT toISOString(): getLibyaTime()
+    // encodes Libya wall-clock time in a local-timezone Date, and
+    // toISOString() converts to UTC — which shifts the date by a day for
+    // machines ahead of UTC during the first hours after midnight
+    // (confirmed reproducible: returned yesterday's date at 01:00 Libya).
+    const fmt = (d) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     const { data, error } = await supabase
         .from('deductions')

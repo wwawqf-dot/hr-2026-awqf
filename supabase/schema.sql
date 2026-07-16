@@ -288,7 +288,12 @@ begin
         if v_days <= 0 then
             raise exception 'يجب أن يكون عدد أيام الخصم أكبر من صفر';
         end if;
-        v_retro := (current_date - p_start::date);
+        -- "Today" must be Libya's calendar date, not the database server's.
+        -- Supabase runs on UTC, so between 00:00 and 02:00 Libya time
+        -- `current_date` is still yesterday — silently widening the 40-day
+        -- window to 41 during those hours and disagreeing with the
+        -- frontend's Africa/Tripoli check.
+        v_retro := ((now() at time zone 'Africa/Tripoli')::date - p_start::date);
         if v_retro > 40 then
             raise exception 'لا يمكن تسجيل إجازة بتاريخ رجعي يتجاوز 40 يوماً من تاريخ النظام الحالي.';
         end if;

@@ -59,6 +59,19 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
     const hasDates = Boolean(start || end);
     const days = hasUnknownDays ? Number(unknownDays) : calculateDeductionDays(start, end, holidays, employee.job_title);
 
+    // Live validation, recomputed on every keystroke, so the submit button
+    // disables BEFORE the user tries to save. The submit-time checks below
+    // (and the un-bypassable server-side checks) remain as backstops.
+    const netBalance = computeNetBalance(employee);
+    const retroDaysLive = !hasUnknownDays && start ? daysBetween(start, localTodayStr()) : null;
+    const retroBlocked = retroDaysLive !== null && retroDaysLive > RETRO_LIMIT_DAYS;
+    const balanceBlocked = days > 0 && days > netBalance;
+    const liveBlockMessage = balanceBlocked
+        ? `الرصيد المتاح (${netBalance} يوم) غير كافٍ لتغطية الخصم المطلوب (${days} يوم).`
+        : retroBlocked
+            ? `تاريخ البداية يسبق اليوم بـ ${retroDaysLive} يوماً، والحد الأقصى المسموح ${RETRO_LIMIT_DAYS} يوماً.`
+            : '';
+
     async function handleSubmit(e) {
         e.preventDefault();
         setError('');
@@ -208,11 +221,18 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
                         />
                     </div>
 
+                    {liveBlockMessage && (
+                        <div className="form-error" style={{ marginBottom: '0.9rem' }}>
+                            <i className="fas fa-ban" style={{ marginLeft: 6 }}></i>
+                            {liveBlockMessage}
+                        </div>
+                    )}
+
                     <button
                         type="submit"
                         className="btn btn-primary"
                         style={{ width: '100%', justifyContent: 'center' }}
-                        disabled={saving}
+                        disabled={saving || balanceBlocked || retroBlocked}
                     >
                         {saving ? 'جاري الحفظ...' : 'اعتماد الخصم'}
                     </button>

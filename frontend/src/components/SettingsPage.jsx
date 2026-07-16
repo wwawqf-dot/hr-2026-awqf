@@ -5,6 +5,43 @@ import ConfirmDangerModal from './modals/ConfirmDangerModal';
 import { parseEmployeesExcel } from '../utils/parseEmployeesExcel';
 import { getLibyaDateStr, getLibyaYear } from '../utils/libyaTime';
 
+// Structural validation of an imported backup file, run BEFORE anything is
+// sent to the sync RPC. Returns a user-friendly Arabic error string, or ''
+// when the payload is safe. This is what stands between a corrupted /
+// hand-edited JSON file and a confusing failure mid-import.
+function validateBackupPayload(parsed) {
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return 'صيغة الملف غير صالحة: المحتوى ليس كائن JSON.';
+    }
+    if (!Array.isArray(parsed.years) || parsed.years.length === 0) {
+        return 'صيغة الملف غير صالحة: قائمة السنوات المالية (years) مفقودة أو فارغة.';
+    }
+    for (const y of parsed.years) {
+        if (!/^\d{4}$/.test(String(y))) {
+            return `صيغة الملف غير صالحة: سنة مالية غير صحيحة (${y}).`;
+        }
+    }
+    if (!Array.isArray(parsed.employees)) {
+        return 'صيغة الملف غير صالحة: قائمة الموظفين (employees) مفقودة.';
+    }
+    for (let i = 0; i < parsed.employees.length; i++) {
+        const emp = parsed.employees[i];
+        if (!emp || typeof emp !== 'object' || Array.isArray(emp)) {
+            return `صيغة الملف غير صالحة: العنصر رقم ${i + 1} في قائمة الموظفين ليس سجلاً صحيحاً.`;
+        }
+        if (!emp.name || !String(emp.name).trim()) {
+            return `صيغة الملف غير صالحة: الموظف رقم ${i + 1} بدون اسم.`;
+        }
+        if (emp.years_data !== undefined && (typeof emp.years_data !== 'object' || Array.isArray(emp.years_data) || emp.years_data === null)) {
+            return `صيغة الملف غير صالحة: بيانات السنوات (years_data) للموظف "${emp.name}" ليست بالشكل الصحيح.`;
+        }
+        if (emp.deductions_history !== undefined && !Array.isArray(emp.deductions_history)) {
+            return `صيغة الملف غير صالحة: سجل الخصومات للموظف "${emp.name}" ليس قائمة.`;
+        }
+    }
+    return '';
+}
+
 export default function SettingsPage() {
     const {
         years, settings, loading, error, addYear, deleteYear, updateSettings,
@@ -138,14 +175,15 @@ export default function SettingsPage() {
             return;
         }
 
-        if (!Array.isArray(parsed.years) || !Array.isArray(parsed.employees)) {
-            setBackupError('صيغة الملف غير صالحة: يجب أن يحتوي على years و employees.');
+        const structuralError = validateBackupPayload(parsed);
+        if (structuralError) {
+            setBackupError(structuralError);
             return;
         }
 
         if (
             !window.confirm(
-                'سيؤدي الاستيراد إلى حذف جميع بيانات الموظفين والسنوات المالية الحالية واستبدالها بالكامل ببيانات الملف المستورد.\nهل أنت متأكد من المتابعة؟'
+                `تم العثور على ${parsed.employees.length} موظف و ${parsed.years.length} سنة مالية في الملف.\nسيتم دمج هذه البيانات مع البيانات الحالية (مطابقة عبر الرقم الوظيفي أو المعرّف، بدون تكرار).\nهل أنت متأكد من المتابعة؟`
             )
         ) {
             return;
