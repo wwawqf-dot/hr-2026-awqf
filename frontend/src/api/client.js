@@ -1,6 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
 
+const PROXY_PORT = 3456;
+const PROXY_BASE = `http://localhost:${PROXY_PORT}`;
+
 class ApiError extends Error {
     constructor(message, status) {
         super(message);
@@ -8,14 +11,23 @@ class ApiError extends Error {
     }
 }
 
-// ----------------------------------------------------------------
-//  SAFETY WRAPPER — network resilience + session expiry detection
-// ----------------------------------------------------------------
-
-// Registered by AuthContext so a 401 can trigger a logout redirect
-// without creating a circular dependency.
 let onAuthExpired = null;
 export function setOnAuthExpired(fn) { onAuthExpired = fn; }
+
+let _proxyAvailable = null;
+
+export async function checkProxy() {
+    if (_proxyAvailable !== null) return _proxyAvailable;
+    try {
+        const r = await fetch(`${PROXY_BASE}/ping`, { signal: AbortSignal.timeout(2000) });
+        _proxyAvailable = r.ok;
+    } catch {
+        _proxyAvailable = false;
+    }
+    return _proxyAvailable;
+}
+
+export function resetProxyCache() { _proxyAvailable = null; }
 
 function isNetworkError(error) {
     if (!error) return false;
@@ -40,6 +52,7 @@ function isServerError(error) {
 const NETWORK_MSG = 'فشل الاتصال بالخادم، يرجى التحقق من الإنترنت وإعادة المحاولة.';
 const SESSION_MSG = 'انتهت صلاحية الجلسة. يرجى تسجيل الدخول مرة أخرى.';
 const SERVER_MSG  = 'الخادم غير متاح حالياً، يرجى المحاولة لاحقاً.';
+const PROXY_MSG   = 'خادم الإدارة المحلية غير متاح. يرجى تشغيل start.bat';
 
 function classifyError(error) {
     if (isNetworkError(error)) return { status: 0, message: NETWORK_MSG };
@@ -73,18 +86,10 @@ async function safeSupabase(promise, fallback = 'حدث خطأ غير متوقع
     }
 }
 
-// Shorthand for RPC-only calls.
 function rpc(fn, args) {
     return safeSupabase(supabase.rpc(fn, args));
 }
 
-// Admin-only RPC: creates a fresh ephemeral Supabase client seeded with the
-// admin's own access token. This guarantees the RPC has an `authenticated`
-// JWT (so the GRANT passes) while NEVER touching the admin's persisted
-// session storage or triggering `onAuthStateChange` on the main client.
-// Without this, the RPC call would fail with a JWT auth error, which
-// `safeSupabase` would misinterpret as the admin's session expiring,
-// triggering a forced logout.
 async function rpcAdmin(fn, args) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) {
@@ -99,6 +104,26 @@ async function rpcAdmin(fn, args) {
         }
     );
     return safeSupabase(ephemeral.rpc(fn, args));
+}
+
+async function proxyFetch(path, options = {}) {
+    const available = await checkProxy();
+    if (!available) throw new ApiError(PROXY_MSG, 503);
+    try {
+        const r = await fetch(`${PROXY_BASE}${path}`, {
+            signal: AbortSignal.timeout(10000),
+            headers: { 'Content-Type': 'application/json' },
+            ...options,
+        });
+        if (r.status === 204) return null;
+        const data = await r.json();
+        if (!r.ok) throw new ApiError(data.error || 'خطأ في الخادم المحلي', r.status);
+        return data;
+    } catch (e) {
+        if (e instanceof ApiError) throw e;
+        _proxyAvailable = false;
+        throw new ApiError(PROXY_MSG, 503);
+    }
 }
 
 async function listYears() {
@@ -134,11 +159,10 @@ async function listExpiringLeaves(windowDays = 7) {
     };
 }
 
-// ----------------------------------------------------------------
-//  PUBLIC API
-// ----------------------------------------------------------------
-
 export const api = {
+    // ---- Proxy metadata ------------------------------------------------
+    checkProxy,
+
     // ---- Employees & roster ------------------------------------------
     getEmployees: () => rpc('list_employees'),
     addEmployee: (payload) => rpc('create_employee', { p_payload: payload }),
@@ -194,8 +218,17 @@ export const api = {
         return api.getSettings();
     },
 
-    // ---- Users --------------------------------------------------------
+    // ---- Users (via proxy -> GoTrue Admin API) -------------------------
     getUsers: async () => {
+        const available = await checkProxy();
+        if (available) {
+            try {
+                const data = await proxyFetch('/api/users');
+                return data;
+            } catch {
+                // fall through to profiles
+            }
+        }
         const rows = await safeSupabase(
             supabase.from('profiles').select('id, username, role, created_at').order('created_at')
         );
@@ -209,26 +242,41 @@ export const api = {
             })),
         };
     },
+    addUser: async (email, password, role) => {
+        const data = await proxyFetch('/api/users', {
+            method: 'POST',
+            body: JSON.stringify({ email, password, role }),
+        });
+        return { id: data.id, email: data.email, role: data.role };
+    },
     deleteUser: async (id) => {
-        try {
-            await rpcAdmin('delete_auth_user', { p_id: id });
-            return { message: 'تم حذف المستخدم' };
-        } catch (e) {
-            if (e instanceof ApiError) throw e;
-            throw new ApiError(e.message || 'تعذر حذف المستخدم', 400);
-        }
+        await proxyFetch(`/api/users/${id}`, { method: 'DELETE' });
+        return { message: 'تم حذف المستخدم' };
     },
 
-    // ---- Invite codes -------------------------------------------------
-    generateInviteCode: (role) => rpc('generate_invite_code', { p_role: role }),
-    getInviteCodes: async () => {
-        const rows = await safeSupabase(
-            supabase.from('invite_codes').select('*').order('created_at', { ascending: false })
-        );
-        return { codes: rows || [] };
+    // ---- Invite codes (via proxy -> settings table) --------------------
+    generateInviteCode: async (role) => {
+        const data = await proxyFetch('/api/invite-codes/generate', {
+            method: 'POST',
+            body: JSON.stringify({ role }),
+        });
+        return data.code;
     },
-    validateInviteCode: (code) => rpc('validate_invite_code', { p_code: code }),
-    consumeInviteCode: (code) => rpc('consume_invite_code', { p_code: code }),
+    getInviteCodes: async () => {
+        const data = await proxyFetch('/api/invite-codes');
+        return { codes: data.codes || [] };
+    },
+    validateInviteCode: async (code) => {
+        const data = await proxyFetch(`/api/invite-codes/validate?code=${encodeURIComponent(code)}`);
+        return data;
+    },
+    consumeInviteCode: async (code, userId) => {
+        const data = await proxyFetch('/api/invite-codes/consume', {
+            method: 'POST',
+            body: JSON.stringify({ code, user_id: userId }),
+        });
+        return data;
+    },
 
     // ---- Audit log ----------------------------------------------------
     getAuditLog: async () => {

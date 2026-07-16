@@ -1,6 +1,8 @@
 -- =====================================================================
---  One-time deployment: Invite Codes (جدول رموز الدعوة)
---  Run this in Supabase Dashboard → SQL Editor
+--  One-time DDL deployment: Invite Codes (جدول رموز الدعوة)
+--  ⚠️  OPTIONAL — not needed when using the proxy server (server.mjs)
+--     The proxy stores codes in the `settings` table instead.
+--  Run this in Supabase Dashboard → SQL Editor for a no-proxy setup:
 --  https://supabase.com/dashboard/project/uzmhsesmszngkanjsjgy/sql/new
 -- =====================================================================
 
