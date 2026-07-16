@@ -210,20 +210,18 @@ export const api = {
         };
     },
     addUser: async (payload) => {
-        // Try Edge Function first (no session side-effects). If the function
-        // hasn't been deployed yet (404), fall back to the RPC admin client.
         try {
             const { data, error } = await supabase.functions.invoke('manage-users', {
                 body: { action: 'create', email: payload.username, password: payload.password, role: payload.role || 'data_entry' },
             });
-            if (error) throw error;
+            if (error) {
+                if (error.context?.status === 404) throw '_FALLBACK_';
+                throw new ApiError(error.message || 'تعذر إضافة المستخدم', error.context?.status || 400);
+            }
             if (data?.error) throw new ApiError(data.error, 400);
             return { user: data.user };
         } catch (e) {
-            const isFn404 = e?.message?.includes('not found') || e?.message?.includes('404');
-            if (e instanceof ApiError) throw e;
-            if (isFn404) {
-                // Edge Function not deployed — fall back to RPC.
+            if (e === '_FALLBACK_') {
                 const result = await rpcAdmin('create_auth_user', {
                     p_email: payload.username,
                     p_password: payload.password,
@@ -231,6 +229,7 @@ export const api = {
                 });
                 return { user: result };
             }
+            if (e instanceof ApiError) throw e;
             throw new ApiError(e.message || 'تعذر إضافة المستخدم', 400);
         }
     },
@@ -239,16 +238,18 @@ export const api = {
             const { data, error } = await supabase.functions.invoke('manage-users', {
                 body: { action: 'delete', id },
             });
-            if (error) throw error;
+            if (error) {
+                if (error.context?.status === 404) throw '_FALLBACK_';
+                throw new ApiError(error.message || 'تعذر حذف المستخدم', error.context?.status || 400);
+            }
             if (data?.error) throw new ApiError(data.error, 400);
             return { message: 'تم حذف المستخدم' };
         } catch (e) {
-            const isFn404 = e?.message?.includes('not found') || e?.message?.includes('404');
-            if (e instanceof ApiError) throw e;
-            if (isFn404) {
+            if (e === '_FALLBACK_') {
                 await rpcAdmin('delete_auth_user', { p_id: id });
                 return { message: 'تم حذف المستخدم' };
             }
+            if (e instanceof ApiError) throw e;
             throw new ApiError(e.message || 'تعذر حذف المستخدم', 400);
         }
     },
