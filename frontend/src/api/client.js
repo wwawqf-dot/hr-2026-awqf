@@ -211,44 +211,22 @@ export const api = {
     },
     addUser: async (payload) => {
         try {
-            const { data, error } = await supabase.functions.invoke('manage-users', {
-                body: { action: 'create', email: payload.username, password: payload.password, role: payload.role || 'data_entry' },
+            const result = await rpcAdmin('create_auth_user', {
+                p_email: payload.username,
+                p_password: payload.password,
+                p_role: payload.role || 'data_entry',
             });
-            if (error) {
-                if (error.context?.status === 404) throw '_FALLBACK_';
-                throw new ApiError(error.message || 'تعذر إضافة المستخدم', error.context?.status || 400);
-            }
-            if (data?.error) throw new ApiError(data.error, 400);
-            return { user: data.user };
+            return { user: result };
         } catch (e) {
-            if (e === '_FALLBACK_') {
-                const result = await rpcAdmin('create_auth_user', {
-                    p_email: payload.username,
-                    p_password: payload.password,
-                    p_role: payload.role || 'data_entry',
-                });
-                return { user: result };
-            }
             if (e instanceof ApiError) throw e;
             throw new ApiError(e.message || 'تعذر إضافة المستخدم', 400);
         }
     },
     deleteUser: async (id) => {
         try {
-            const { data, error } = await supabase.functions.invoke('manage-users', {
-                body: { action: 'delete', id },
-            });
-            if (error) {
-                if (error.context?.status === 404) throw '_FALLBACK_';
-                throw new ApiError(error.message || 'تعذر حذف المستخدم', error.context?.status || 400);
-            }
-            if (data?.error) throw new ApiError(data.error, 400);
+            await rpcAdmin('delete_auth_user', { p_id: id });
             return { message: 'تم حذف المستخدم' };
         } catch (e) {
-            if (e === '_FALLBACK_') {
-                await rpcAdmin('delete_auth_user', { p_id: id });
-                return { message: 'تم حذف المستخدم' };
-            }
             if (e instanceof ApiError) throw e;
             throw new ApiError(e.message || 'تعذر حذف المستخدم', 400);
         }
