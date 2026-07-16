@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import PageHeader from './PageHeader';
+import LoadingSpinner from './LoadingSpinner';
+import { TableSkeleton } from './SkeletonLoader';
 import CustomConfirmModal from './modals/CustomConfirmModal';
 
 export default function UsersPage() {
@@ -119,7 +121,8 @@ export default function UsersPage() {
                         </select>
                     </div>
                     <button type="submit" className="btn btn-primary" disabled={saving} style={{ width: '100%', justifyContent: 'center', marginTop: 6 }}>
-                        <i className="fas fa-plus"></i> {saving ? 'جاري الإنشاء...' : 'إنشاء حساب المستخدم'}
+                        {saving && <LoadingSpinner size={16} color="#fff" style={{ marginLeft: 8 }} />}
+                        <i className="fas fa-plus" style={saving ? { marginLeft: 4 } : {}}></i> {saving ? 'جاري الإنشاء...' : 'إنشاء حساب المستخدم'}
                     </button>
                 </form>
             </div>
@@ -130,7 +133,9 @@ export default function UsersPage() {
                 {error && <div className="form-error">{error}</div>}
 
                 {loading ? (
-                    <div className="empty-state">جاري التحميل...</div>
+                    <div className="table-container" style={{ maxHeight: 'none', padding: 0, overflow: 'hidden' }}>
+                        <TableSkeleton rows={4} cols={4} />
+                    </div>
                 ) : (
                     <div className="table-container" style={{ maxHeight: 'none' }}>
                         <table>

@@ -1,5 +1,6 @@
 import { useExpiringLeaves } from '../hooks/useExpiringLeaves';
 import { formatDateDisplay } from '../utils/formatDate';
+import { WidgetSkeleton } from './SkeletonLoader';
 
 // Small dashboard card listing employees whose leave ends within the short
 // window around today (see the /deductions/expiring route). Shown to all roles.
@@ -17,7 +18,7 @@ export default function ExpiringLeavesWidget() {
             </h3>
 
             {loading ? (
-                <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.88rem' }}>جاري التحميل...</p>
+                <WidgetSkeleton />
             ) : items.length === 0 ? (
                 <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.88rem' }}>
                     لا توجد إجازات تنتهي قريباً

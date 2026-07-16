@@ -1,3 +1,18 @@
+@keyframes skeletonShimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+}
+.skeleton-shimmer {
+    background: linear-gradient(90deg,
+        rgba(255,255,255,0.04) 25%,
+        rgba(255,255,255,0.10) 37%,
+        rgba(255,255,255,0.04) 63%
+    );
+    background-size: 800px 100%;
+    animation: skeletonShimmer 1.6s ease-in-out infinite;
+    border-radius: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 :root {
     --bg-color: #0b0f19;
     --glass-bg: rgba(19, 26, 42, 0.75);

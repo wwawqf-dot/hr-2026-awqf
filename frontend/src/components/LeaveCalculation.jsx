@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useLeaveData } from '../hooks/useLeaveData';
 import { getLibyaTime } from '../utils/libyaTime';
+import { TableSkeleton } from './SkeletonLoader';
 
 const MONTHLY_RATE_30 = 2.5;
 const MONTHLY_RATE_45 = 3.75;
@@ -75,7 +76,13 @@ export default function LeaveCalculation() {
     }, [employees, activeYear, earnedMonths, sortedYears, search]);
 
     if (loading) {
-        return <div className="empty-state">جاري التحميل...</div>;
+        return (
+            <div className="leave-calculation">
+                <div className="panel" style={{ padding: 0, overflow: 'hidden', marginBottom: '1.25rem' }}>
+                    <TableSkeleton rows={8} cols={7} />
+                </div>
+            </div>
+        );
     }
 
     return (

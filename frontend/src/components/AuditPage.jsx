@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import PageHeader from './PageHeader';
+import { TableSkeleton } from './SkeletonLoader';
 
 export default function AuditPage() {
     const [log, setLog] = useState([]);
@@ -24,7 +25,9 @@ export default function AuditPage() {
                 {error && <div className="form-error">{error}</div>}
 
                 {loading ? (
-                    <div className="empty-state">جاري التحميل...</div>
+                    <div className="table-container" style={{ maxHeight: 'none', padding: 0, overflow: 'hidden' }}>
+                        <TableSkeleton rows={5} cols={4} />
+                    </div>
                 ) : log.length === 0 ? (
                     <div className="empty-state">لا توجد أي أنشطة مسجلة حتى الآن.</div>
                 ) : (

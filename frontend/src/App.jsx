@@ -18,8 +18,20 @@ export default function App() {
 
     if (loading) {
         return (
-            <div className="login-screen">
-                <p style={{ color: 'var(--text-muted)' }}>جاري التحميل...</p>
+            <div
+                className="login-screen"
+                style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 24,
+                    minHeight: '100vh',
+                }}
+            >
+                <div className="skeleton-shimmer" style={{ width: 80, height: 80, borderRadius: 20 }} />
+                <div className="skeleton-shimmer" style={{ width: 200, height: 24 }} />
+                <div className="skeleton-shimmer" style={{ width: 140, height: 16 }} />
             </div>
         );
     }

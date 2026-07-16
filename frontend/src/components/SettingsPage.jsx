@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { useLeaveData } from '../hooks/useLeaveData';
 import PageHeader from './PageHeader';
+import LoadingSpinner from './LoadingSpinner';
+import { TableSkeleton } from './SkeletonLoader';
 import ConfirmDangerModal from './modals/ConfirmDangerModal';
 import { parseEmployeesExcel } from '../utils/parseEmployeesExcel';
 import { getLibyaDateStr, getLibyaYear } from '../utils/libyaTime';
@@ -280,6 +282,7 @@ export default function SettingsPage() {
                         />
                     </div>
                     <button type="submit" className="btn btn-primary" disabled={savingYear}>
+                        {savingYear && <LoadingSpinner size={16} color="#fff" style={{ marginLeft: 8 }} />}
                         <i className="fas fa-plus"></i> {savingYear ? 'جاري الإضافة...' : 'إضافة سنة'}
                     </button>
                 </form>
@@ -287,7 +290,9 @@ export default function SettingsPage() {
                 {error && <div className="form-error">{error}</div>}
 
                 {loading ? (
-                    <div className="empty-state">جاري التحميل...</div>
+                    <div className="table-container" style={{ maxHeight: 'none', padding: 0, overflow: 'hidden' }}>
+                        <TableSkeleton rows={3} cols={2} />
+                    </div>
                 ) : (
                     <div className="table-container" style={{ maxHeight: 'none' }}>
                         <table>
@@ -352,6 +357,7 @@ export default function SettingsPage() {
                     onClick={() => excelInputRef.current?.click()}
                     disabled={importingExcel}
                 >
+                    {importingExcel && <LoadingSpinner size={16} color="#10b981" style={{ marginLeft: 8 }} />}
                     <i className="fas fa-file-excel"></i> {importingExcel ? 'جاري الاستيراد...' : 'استيراد موظفين من Excel'}
                 </button>
                 <input
@@ -384,9 +390,11 @@ export default function SettingsPage() {
                 )}
                 <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
                     <button className="btn btn-outline" onClick={handleExport} disabled={exporting}>
+                        {exporting && <LoadingSpinner size={16} color="#10b981" style={{ marginLeft: 8 }} />}
                         <i className="fas fa-file-export"></i> {exporting ? 'جاري التصدير...' : 'حفظ نسخة تصدير'}
                     </button>
                     <button className="btn btn-outline" onClick={handleServerBackup} disabled={serverBackingUp}>
+                        {serverBackingUp && <LoadingSpinner size={16} color="#10b981" style={{ marginLeft: 8 }} />}
                         <i className="fas fa-server"></i> {serverBackingUp ? 'جاري الحفظ...' : 'إنشاء نسخة احتياطية في الخادم'}
                     </button>
                     <button
@@ -395,6 +403,7 @@ export default function SettingsPage() {
                         onClick={() => fileInputRef.current?.click()}
                         disabled={importing}
                     >
+                        {importing && <LoadingSpinner size={16} color="#f59e0b" style={{ marginLeft: 8 }} />}
                         <i className="fas fa-file-import"></i> {importing ? 'جاري الاستيراد...' : 'استيراد نسخة'}
                     </button>
                     <input

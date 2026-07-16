@@ -5,6 +5,7 @@ import PageHeader from './PageHeader';
 import SearchBar from './SearchBar';
 import EmployeesTable from './EmployeesTable';
 import ExpiringLeavesWidget from './ExpiringLeavesWidget';
+import { TableSkeleton } from './SkeletonLoader';
 import EmployeeFormModal from './modals/EmployeeFormModal';
 import DeductionModal from './modals/DeductionModal';
 import ReportModal from './modals/ReportModal';
@@ -89,8 +90,8 @@ export default function EmployeesPage() {
             {deleteError && <div className="form-error">{deleteError}</div>}
 
             {loading ? (
-                <div className="table-container">
-                    <div className="empty-state">جاري التحميل...</div>
+                <div className="table-container" style={{ padding: 0, overflow: 'hidden' }}>
+                    <TableSkeleton rows={7} cols={7} />
                 </div>
             ) : (
                 <EmployeesTable
