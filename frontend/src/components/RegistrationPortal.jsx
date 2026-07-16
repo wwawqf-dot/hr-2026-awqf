@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { api, checkProxy } from '../api/client';
+import { api } from '../api/client';
 import LoadingSpinner from './LoadingSpinner';
 
 export default function RegistrationPortal() {
@@ -9,7 +9,6 @@ export default function RegistrationPortal() {
     const [searchParams] = useSearchParams();
     const urlCode = searchParams.get('code') || '';
 
-    const [proxyAvailable, setProxyAvailable] = useState(null);
     const [step, setStep] = useState(urlCode ? 'verify' : 'code');
     const [inviteCode, setInviteCode] = useState(urlCode);
     const [role, setRole] = useState('');
@@ -24,17 +23,10 @@ export default function RegistrationPortal() {
     const [success, setSuccess] = useState('');
 
     useEffect(() => {
-        checkProxy().then(setProxyAvailable);
-    }, []);
-
-    useEffect(() => {
-        if (urlCode && proxyAvailable) {
+        if (urlCode) {
             validateCode(urlCode);
-        } else if (urlCode && proxyAvailable === false) {
-            setCodeError('خادم التحقق غير متاح. يرجى المحاولة لاحقاً.');
-            setStep('code');
         }
-    }, [urlCode, proxyAvailable]);
+    }, [urlCode]);
 
     async function validateCode(code) {
         setValidating(true);
@@ -56,10 +48,6 @@ export default function RegistrationPortal() {
 
     async function handleVerifyCode(e) {
         e.preventDefault();
-        if (!proxyAvailable) {
-            setCodeError('خادم الإدارة المحلية غير متصل. يرجى من المسؤول تشغيله.');
-            return;
-        }
         await validateCode(inviteCode.trim());
     }
 
@@ -80,7 +68,7 @@ export default function RegistrationPortal() {
                 email: email.trim(),
                 password,
                 options: {
-                    data: { role: role || 'viewer', username: name.trim() },
+                    data: { role, username: name.trim() },
                 },
             });
             if (error) throw error;
@@ -128,13 +116,6 @@ export default function RegistrationPortal() {
                     </p>
                 </div>
 
-                {proxyAvailable === false && !urlCode && (
-                    <div className="form-error" style={{ marginBottom: 16, padding: '1rem', fontSize: '0.9rem' }}>
-                        <i className="fas fa-info-circle" style={{ marginLeft: 6 }}></i>
-                        إنشاء الحساب متاح فقط عبر دعوة من المسؤول. يُرجى التواصل مع مدير النظام.
-                    </div>
-                )}
-
                 {/* Step 1: Enter Invite Code */}
                 {step === 'code' && (
                     <form onSubmit={handleVerifyCode}>
@@ -148,13 +129,12 @@ export default function RegistrationPortal() {
                                 type="text"
                                 value={inviteCode}
                                 onChange={(e) => setInviteCode(e.target.value)}
-                                placeholder={proxyAvailable ? 'أدخل رمز الدعوة' : 'الخادم غير متصل...'}
-                                disabled={!proxyAvailable}
+                                placeholder="أدخل رمز الدعوة"
                                 style={{ direction: 'ltr', textAlign: 'center', fontFamily: 'monospace', fontSize: '1.1rem', letterSpacing: 2 }}
                                 dir="ltr"
                             />
                         </div>
-                        <button type="submit" className="btn btn-primary" disabled={validating || !inviteCode.trim() || !proxyAvailable} style={{
+                        <button type="submit" className="btn btn-primary" disabled={validating || !inviteCode.trim()} style={{
                             width: '100%', justifyContent: 'center', minHeight: 48, fontSize: '1rem', fontWeight: 800, borderRadius: 12,
                             background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                         }}>
