@@ -7,6 +7,7 @@ import UsersPage from './components/UsersPage';
 import AuditPage from './components/AuditPage';
 import SettingsPage from './components/SettingsPage';
 import Regulations from './components/Regulations';
+import LeaveCalculation from './components/LeaveCalculation';
 
 export default function App() {
     const { user, loading } = useAuth();
@@ -35,6 +36,7 @@ export default function App() {
                 {activeView === 'audit' && <AuditPage />}
                 {activeView === 'settings' && <SettingsPage />}
                 {activeView === 'regulations' && <Regulations />}
+                {activeView === 'auditCalc' && <LeaveCalculation />}
             </div>
             <footer className="footer">
                 منظومة إجازات الموظفين الرقمية - مكتب أوقاف القره بوللي | تصميم وتطوير <span>عبدالرحيم أحمد شيتة</span> &copy; 2026

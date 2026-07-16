@@ -4,6 +4,7 @@ const TABS = [
     { key: 'audit', label: 'سجل النشاطات', icon: 'fa-clipboard-list' },
     { key: 'settings', label: 'أساسيات النظام', icon: 'fa-sliders-h' },
     { key: 'regulations', label: 'اللوائح التنظيمية', icon: 'fa-book' },
+    { key: 'auditCalc', label: 'التدقيق القانوني', icon: 'fa-scale-balanced' },
 ];
 
 export default function NavTabs({ view, setView }) {

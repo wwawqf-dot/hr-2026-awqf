@@ -1,106 +1,146 @@
+import { useMemo } from 'react';
 import { useLeaveData } from '../hooks/useLeaveData';
-import { getLibyaDateStr } from '../utils/libyaTime';
+import { getLibyaTime } from '../utils/libyaTime';
+import PageHeader from './PageHeader';
 
-// Standard legal accrual rate: 30 days / 12 months = 2.5 days per worked
-// month. This is a fixed legal reference rate, independent of any
-// individual employee's actual 30/45-day operational grant.
-const MONTHLY_LEGAL_ACCRUAL_RATE = 2.5;
+const MONTHLY_RATE_30 = 2.5;
+const MONTHLY_RATE_45 = 3.75;
 
-// ---------------------------------------------------------------------
-// <LeaveCalculation /> — "آلية حساب الإجازات" read-only legal audit view.
-//
-// STRICT ISOLATION: this component only ever READS `employees` from the
-// existing `useLeaveData` hook (destructuring just `employees`/`loading`/
-// `error` — never any of the hook's mutating functions). It performs its
-// own on-the-fly math purely for display and writes nothing back:
-//   - no calls to addDeduction/updateEmployee/toggleFreeze/etc.
-//   - no changes to the operational 30/45-day upfront grant logic
-//   - no changes to the JSON export/backup shape
-// It is a self-contained "what would the law say" overlay, entirely
-// separate from the system's real (and unchanged) deduction engine.
-// ---------------------------------------------------------------------
 export default function LeaveCalculation() {
-    const { employees, loading, error } = useLeaveData();
+    const { employees, loading } = useLeaveData();
 
-    const [currentYear, currentMonthStr] = getLibyaDateStr().split('-');
-    const currentMonth = Number(currentMonthStr);
-    const legalEarnedDays = MONTHLY_LEGAL_ACCRUAL_RATE * currentMonth;
+    const currentMonth = useMemo(() => getLibyaTime().getMonth() + 1, []);
+
+    const rows = useMemo(() => {
+        if (!employees.length) return [];
+        const currentYear = String(getLibyaTime().getFullYear());
+
+        return employees
+            .filter((e) => !e.is_frozen)
+            .map((emp) => {
+                const annualAllowance = emp.over_45 ? 45 : 30;
+                const monthlyRate = emp.over_45 ? MONTHLY_RATE_45 : MONTHLY_RATE_30;
+                const legalEarned = +(monthlyRate * currentMonth).toFixed(1);
+                const consumed = emp.years_data?.[currentYear]?.deducted
+                    ? +emp.years_data[currentYear].deducted
+                    : 0;
+                const legalNet = +(legalEarned - consumed).toFixed(1);
+
+                return { id: emp.id, name: emp.name, annualAllowance, consumed, legalEarned, legalNet };
+            })
+            .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+    }, [employees, currentMonth]);
+
+    if (loading) {
+        return (
+            <>
+                <PageHeader />
+                <div className="empty-state">جاري التحميل...</div>
+            </>
+        );
+    }
 
     return (
-        <div className="panel">
-            <h2>
-                <i className="fas fa-scale-balanced"></i> آلية حساب الإجازات (تدقيق قانوني)
-            </h2>
+        <>
+            <PageHeader />
+            <div className="leave-calculation">
+                <div className="audit-notice">
+                    <i className="fas fa-balance-scale"></i>
+                    <div>
+                        <strong>ملاحظة هامة:</strong> هذه الواجهة مخصصة للتدقيق القانوني فقط ولا تؤثر على
+                        الأرصدة الفعلية في المنظومة. يحسب هذا الجدول الرصيد المستحق حتى الشهر الحالي
+                        بواقع (2.5 يوم) شهرياً للموظفين العاديين و(3.75 يوم) شهرياً لمن تتجاوز خدمتهم
+                        45 سنة.
+                    </div>
+                </div>
 
-            <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '0.6rem',
-                    background: 'rgba(245, 158, 11, 0.08)',
-                    border: '1px dashed rgba(245, 158, 11, 0.4)',
-                    borderRadius: 8,
-                    padding: '0.9rem 1.1rem',
-                    marginBottom: '1.5rem',
-                    color: 'var(--warning)',
-                    fontSize: '0.88rem',
-                    lineHeight: 1.9,
-                }}
-            >
-                <i className="fas fa-triangle-exclamation" style={{ marginTop: '0.2rem' }}></i>
-                <span>
-                    ملاحظة هامة: هذه الواجهة مخصصة للتدقيق القانوني فقط ولا تؤثر على الأرصدة الفعلية في المنظومة.
-                    يحسب هذا الجدول الرصيد المستحق حتى الشهر الحالي بواقع (2.5 يوم) شهرياً.
-                </span>
-            </div>
-
-            {error && <div className="form-error">{error}</div>}
-
-            {loading ? (
-                <div className="empty-state">جاري التحميل...</div>
-            ) : employees.length === 0 ? (
-                <div className="empty-state">لا يوجد موظفون لعرض بيانات التدقيق.</div>
-            ) : (
-                <div className="table-container" style={{ maxHeight: 'none' }}>
-                    <table>
+                <div className="table-container">
+                    <table className="legal-audit-table">
                         <thead>
                             <tr>
-                                <th>اسم الموظف</th>
-                                <th style={{ textAlign: 'center' }}>الرصيد السنوي الممنوح</th>
-                                <th style={{ textAlign: 'center' }}>الأيام المستهلكة هذه السنة</th>
-                                <th style={{ textAlign: 'center' }}>المستحق قانونياً حتى الآن</th>
-                                <th style={{ textAlign: 'center' }}>الصافي القانوني</th>
+                                <th>#</th>
+                                <th>الاسم</th>
+                                <th>الرصيد السنوي</th>
+                                <th>المستحق حتى شهر {currentMonth}</th>
+                                <th>المستهلك</th>
+                                <th>صافي الرصيد القانوني</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {employees.map((emp) => {
-                                const yearData = emp.years_data?.[currentYear] || {};
-                                const annualAllowance = Number(yearData.added) || (emp.over_45 ? 45 : 30);
-                                const consumed = Number(yearData.deducted) || 0;
-                                const legalNet = legalEarnedDays - consumed;
-
-                                return (
-                                    <tr key={emp.id}>
-                                        <td style={{ fontWeight: 600 }}>{emp.name}</td>
-                                        <td style={{ textAlign: 'center', color: '#60a5fa' }}>{annualAllowance}</td>
-                                        <td style={{ textAlign: 'center', color: 'var(--danger)' }}>{consumed}</td>
-                                        <td style={{ textAlign: 'center', color: 'var(--emerald)' }}>{legalEarnedDays}</td>
-                                        <td
-                                            style={{
-                                                textAlign: 'center',
-                                                fontWeight: 'bold',
-                                                color: legalNet < 0 ? 'var(--danger)' : 'var(--warning)',
-                                            }}
-                                        >
-                                            {legalNet}
+                            {rows.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="empty-state">لا يوجد موظفون لعرضهم</td>
+                                </tr>
+                            ) : (
+                                rows.map((row, i) => (
+                                    <tr key={row.id}>
+                                        <td>{i + 1}</td>
+                                        <td className="name-cell">{row.name}</td>
+                                        <td>{row.annualAllowance} يوم</td>
+                                        <td>{row.legalEarned} يوم</td>
+                                        <td className={row.consumed > 0 ? 'consumed-cell' : ''}>
+                                            {row.consumed > 0 ? `${row.consumed} يوم` : '—'}
+                                        </td>
+                                        <td className={row.legalNet < 0 ? 'negative-cell' : 'positive-cell'}>
+                                            {row.legalNet} يوم
                                         </td>
                                     </tr>
-                                );
-                            })}
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>
-            )}
-        </div>
+            </div>
+
+            <style>{`
+                .leave-calculation { padding: 0 0 1.5rem; }
+
+                .audit-notice {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 0.85rem;
+                    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(245, 158, 11, 0.02));
+                    border: 1px solid rgba(245, 158, 11, 0.25);
+                    border-right: 4px solid #f59e0b;
+                    border-radius: 10px;
+                    padding: 1rem 1.2rem;
+                    margin-bottom: 1.5rem;
+                    font-size: 0.9rem;
+                    line-height: 1.7;
+                    color: var(--text-muted, #94a3b8);
+                    backdrop-filter: blur(6px);
+                }
+                .audit-notice i {
+                    font-size: 1.6rem;
+                    color: #f59e0b;
+                    margin-top: 0.15rem;
+                    flex-shrink: 0;
+                }
+                .audit-notice strong { color: #f59e0b; }
+
+                .legal-audit-table { width: 100%; border-collapse: separate; border-spacing: 0; white-space: nowrap; }
+                .legal-audit-table th {
+                    padding: 1.1rem 1.2rem;
+                    text-align: right;
+                    border-bottom: 1px solid var(--table-border, #1f293d);
+                    background: rgba(255,255,255,0.02);
+                    color: var(--text-main);
+                    font-weight: 700;
+                    font-size: 0.95rem;
+                    border-left: 1px solid var(--table-border, #1f293d);
+                }
+                .legal-audit-table th:last-child { border-left: none; }
+                .legal-audit-table td {
+                    padding: 1.1rem 1.2rem;
+                    text-align: right;
+                    border-bottom: 1px solid var(--table-border, #1f293d);
+                    font-size: 0.93rem;
+                }
+                .legal-audit-table .name-cell { font-weight: 700; }
+                .legal-audit-table .consumed-cell { color: var(--danger, #ef4444); font-weight: 700; }
+                .legal-audit-table .positive-cell { color: var(--success, #10b981); font-weight: 700; }
+                .legal-audit-table .negative-cell { color: var(--danger, #ef4444); font-weight: 700; }
+            `}</style>
+        </>
     );
 }
