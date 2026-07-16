@@ -158,8 +158,7 @@ export default function UsersPage() {
                                             {u.role !== 'admin' ? (
                                                 <button
                                                     type="button"
-                                                    className="btn btn-danger-outline"
-                                                    style={{ padding: '0.4rem 0.7rem', fontSize: '0.85rem' }}
+                                                    className="btn btn-danger-outline btn-icon-text"
                                                     onClick={() => handleDeleteUser(u)}
                                                     title="حذف المستخدم"
                                                 >

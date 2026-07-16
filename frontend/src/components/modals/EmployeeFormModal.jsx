@@ -163,12 +163,8 @@ export default function EmployeeFormModal({ mode, employee, years, openingBalanc
                             {mode === 'edit' ? 'تعديل مضاف الإجازة لكل سنة نشطة:' : 'تحديد مضاف الإجازة لكل سنة نشطة:'}
                         </h4>
                         {years.map((y) => (
-                            <div
-                                className="form-group"
-                                key={y}
-                                style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.6rem' }}
-                            >
-                                <label style={{ width: 140, marginBottom: 0 }}>مضاف سنة {y}:</label>
+                            <div className="form-group year-input-row" key={y}>
+                                <label className="year-input-label">مضاف سنة {y}:</label>
                                 <input
                                     type="number"
                                     style={{ flex: 1 }}

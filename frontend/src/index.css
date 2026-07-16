@@ -138,10 +138,14 @@ body {
     align-items: center;
 }
 
+.nav-tabs-wrap { margin-bottom: 1.5rem; }
+
+/* Hamburger trigger — hidden on desktop/tablet, shown only under 768px. */
+.nav-tabs-toggle { display: none; }
+
 .nav-tabs {
     display: flex;
     gap: 0.6rem;
-    margin-bottom: 1.5rem;
     flex-wrap: wrap;
 }
 .nav-tab {
@@ -195,6 +199,17 @@ body {
 .btn-danger:hover { background: #dc2626; border-color: #dc2626; }
 
 .action-buttons { display: flex; gap: 0.5rem; justify-content: center; }
+
+/* Icon-only action buttons (edit/delete). Compact on desktop; the mobile
+   media query below grows them to a 44x44 minimum touch target. */
+.btn-icon {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+}
+.btn-icon-text {
+    padding: 0.4rem 0.7rem;
+    font-size: 0.85rem;
+}
 
 .search-container {
     margin-bottom: 1.5rem;
@@ -301,6 +316,17 @@ tbody tr:hover { background: rgba(16, 185, 129, 0.05); }
 }
 .form-group input:focus, .form-group select:focus { border-color: var(--emerald); background: rgba(255, 255, 255, 0.06); box-shadow: 0 0 10px rgba(16, 185, 129, 0.1); }
 .form-group input:disabled, .form-group select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Two-column rows (date-range pickers, per-year inputs) that stack into a
+   single column on mobile — see the max-width:768px block below. */
+.date-range-row { display: flex; gap: 1rem; }
+.year-input-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.6rem;
+}
+.year-input-label { width: 140px; margin-bottom: 0; flex-shrink: 0; }
 
 /* Force the opened dropdown list (native <option> popup) to use a solid dark
    background with white text. Without this, options render as white text on
@@ -642,10 +668,85 @@ code {
     color: var(--text-muted);
 }
 
+/* ---------- Tablet / iPad (portrait & landscape) ---------- */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .app-shell { padding: 1.5rem; }
+    .header { padding: 1.25rem 1.5rem; }
+    .regulations-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    th, td { padding: 0.9rem 0.9rem; }
+}
+
+/* ---------- Mobile (phones, under 768px) ---------- */
 @media (max-width: 768px) {
-    .app-shell { padding: 1rem; }
-    .header { padding: 1.2rem; }
+    .app-shell { padding: 0.75rem; }
+
+    .header {
+        padding: 1rem;
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .title h1 { font-size: 1.3rem; }
+    .title p, .title p.org-line { font-size: 0.82rem; }
+    .header-user { flex-wrap: wrap; }
+    .actions { width: 100%; justify-content: stretch; }
+    .actions .btn { flex: 1; justify-content: center; }
+
+    /* Nav tabs collapse behind a hamburger toggle. */
+    .nav-tabs-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        background: var(--glass-bg);
+        backdrop-filter: blur(16px);
+        color: var(--text-main);
+        border: 1px solid var(--glass-border);
+        padding: 0.85rem 1.1rem;
+        border-radius: 12px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .nav-tabs {
+        flex-direction: column;
+        gap: 0.4rem;
+        max-height: 0;
+        overflow: hidden;
+        margin-top: 0;
+        transition: max-height 0.3s ease, margin-top 0.3s ease;
+    }
+    .nav-tabs.nav-tabs-open {
+        max-height: 600px;
+        margin-top: 0.6rem;
+    }
+    .nav-tab { width: 100%; padding: 0.85rem 1.1rem; }
+
     th, td { padding: 0.75rem 0.8rem; }
+
+    /* Touch targets: buttons and inputs get at least 44px of height. */
+    .btn { min-height: 44px; }
+    .btn-icon { min-width: 44px; min-height: 44px; padding: 0.5rem; font-size: 1rem; }
+    .btn-icon-text { min-height: 44px; padding: 0.6rem 0.9rem; font-size: 0.9rem; }
+    .form-group input, .form-group select { min-height: 44px; font-size: 1rem; }
+
+    /* Forms stack into a single column. */
+    .inline-form { flex-direction: column; align-items: stretch; }
+    .inline-form .form-group { min-width: 0; }
+    .inline-form .btn { width: 100%; justify-content: center; }
+    .date-range-row { flex-direction: column; gap: 0; }
+    .year-input-row { flex-direction: column; align-items: stretch; gap: 0.4rem; }
+    .year-input-label { width: auto; }
+
+    .modal-content { padding: 1.25rem; width: 92%; border-radius: 16px; }
+    .modal-header { margin-bottom: 1rem; padding-bottom: 0.75rem; }
+    .modal-title { font-size: 1.1rem; }
+
+    .panel { padding: 1.1rem; }
+    .search-container { padding: 0.4rem 0.8rem; }
+
+    /* Keep the horizontal-scroll table from stretching the page shell —
+       overflow stays contained inside .table-container, never the body. */
+    .table-container { border-radius: 14px; -webkit-overflow-scrolling: touch; }
 }
 
 /* ---------- Printing the employees table directly (Ctrl+P) ---------- */

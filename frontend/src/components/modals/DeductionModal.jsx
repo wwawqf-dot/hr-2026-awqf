@@ -146,7 +146,7 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
                 {error && <div className="form-error">{error}</div>}
 
                 <form onSubmit={handleSubmit}>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
+                    <div className="date-range-row">
                         <div className="form-group" style={{ flex: 1 }}>
                             <label>من تاريخ</label>
                             <input

@@ -303,8 +303,7 @@ export default function SettingsPage() {
                                         <td style={{ fontWeight: 700, color: 'var(--emerald)' }}>سنة {year}</td>
                                         <td style={{ textAlign: 'center' }}>
                                             <button
-                                                className="btn btn-danger-outline"
-                                                style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
+                                                className="btn btn-icon btn-danger-outline"
                                                 onClick={() => handleDeleteYear(year)}
                                                 title="حذف السنة"
                                                 disabled={years.length <= 1}

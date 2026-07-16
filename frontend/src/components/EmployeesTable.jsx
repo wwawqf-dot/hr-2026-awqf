@@ -136,8 +136,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                                         )}
                                         {canEdit && (
                                             <button
-                                                className="btn btn-warning-outline"
-                                                style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
+                                                className="btn btn-icon btn-warning-outline"
                                                 onClick={() => onEdit(emp)}
                                                 title="تعديل"
                                             >
@@ -146,8 +145,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                                         )}
                                         {canDelete && (
                                             <button
-                                                className="btn btn-danger-outline"
-                                                style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
+                                                className="btn btn-icon btn-danger-outline"
                                                 onClick={() => onDelete(emp)}
                                                 title="حذف"
                                             >
