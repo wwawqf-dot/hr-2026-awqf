@@ -10,8 +10,8 @@ export default function PageHeader({ children }) {
                 <h1>منظومة إجازات الموظفين الرقمية</h1>
                 <p className="org-line">الهيئة العامة للأوقاف والشؤون الإسلامية - مكتب القره بوللي</p>
                 <div className="header-user">
-                    <span className={`role-badge${user.role === 'data_entry' ? ' data-entry' : ''}`}>
-                        {user.role === 'admin' ? 'مدير النظام' : 'مُدخل بيانات'}
+                    <span className={`role-badge${user.role === 'data_entry' ? ' data-entry' : user.role === 'viewer' ? ' viewer' : ''}`}>
+                        {user.role === 'admin' ? 'مدير النظام' : user.role === 'viewer' ? 'متابع' : 'مُدخل بيانات'}
                     </span>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{user.username}</span>
                     <LiveClock />

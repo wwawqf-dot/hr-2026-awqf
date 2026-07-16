@@ -119,11 +119,17 @@ export const api = {
             })),
         };
     },
-    addUser: async () => {
-        throw new ApiError('إدارة المستخدمين تتم من لوحة تحكم Supabase (Authentication > Users).', 400);
+    addUser: async (payload) => {
+        const result = await rpc('create_auth_user', {
+            p_email: payload.username,
+            p_password: payload.password,
+            p_role: payload.role || 'data_entry',
+        });
+        return { user: result };
     },
-    deleteUser: async () => {
-        throw new ApiError('إدارة المستخدمين تتم من لوحة تحكم Supabase (Authentication > Users).', 400);
+    deleteUser: async (id) => {
+        await rpc('delete_auth_user', { p_id: id });
+        return { message: 'تم حذف المستخدم' };
     },
 
     // ---- Audit log ----------------------------------------------------
