@@ -2,7 +2,7 @@
 // the source of truth and recalculates independently when the deduction
 // is saved. "محفظ"/"محفظة" job titles observe a Thursday+Friday weekend;
 // every other job title uses the standard Friday+Saturday weekend.
-export function getWeekendDays(jobTitle) {
+function getWeekendDays(jobTitle) {
     const isHafiz = jobTitle === 'محفظ' || jobTitle === 'محفظة';
     return isHafiz ? [4, 5] : [5, 6];
 }

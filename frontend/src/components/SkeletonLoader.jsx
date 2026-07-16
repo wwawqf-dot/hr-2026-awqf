@@ -1,10 +1,17 @@
 import { useMemo } from 'react';
 
+const boxStyle = {
+    background: 'linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%)',
+    backgroundSize: '200% 100%',
+    animation: 'shimmer 1.5s ease-in-out infinite',
+};
+
 function SkeletonBox({ width, height, style, rounded = true }) {
     return (
         <div
             className="skeleton-shimmer"
             style={{
+                ...boxStyle,
                 width: width || '100%',
                 height: height || 20,
                 borderRadius: rounded ? 8 : 4,
@@ -50,34 +57,6 @@ export function TableSkeleton({ rows = 6, cols = 7 }) {
     );
 }
 
-export function CardSkeleton({ lines = 3, height = 140 }) {
-    return (
-        <div
-            className="panel"
-            style={{ padding: '1.25rem', height, display: 'flex', flexDirection: 'column', gap: 12, justifyContent: 'center' }}
-        >
-            <SkeletonBox width="55%" height={22} />
-            {Array.from({ length: lines }).map((_, i) => (
-                <SkeletonBox key={i} width={`${60 + Math.random() * 30}%`} height={16} />
-            ))}
-        </div>
-    );
-}
-
-export function TextSkeleton({ lines = 4 }) {
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {Array.from({ length: lines }).map((_, i) => (
-                <SkeletonBox
-                    key={i}
-                    width={i === lines - 1 ? '50%' : '100%'}
-                    height={16}
-                />
-            ))}
-        </div>
-    );
-}
-
 export function WidgetSkeleton() {
     return (
         <div
@@ -99,39 +78,4 @@ export function WidgetSkeleton() {
     );
 }
 
-export function AuthSkeleton() {
-    return (
-        <div
-            className="login-screen"
-            style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 24,
-                minHeight: '100vh',
-            }}
-        >
-            <SkeletonBox width={80} height={80} style={{ borderRadius: 20 }} />
-            <SkeletonBox width={200} height={24} />
-            <SkeletonBox width={140} height={16} />
-        </div>
-    );
-}
 
-export default function SkeletonLoader({ variant = 'table', rows, cols, lines, height }) {
-    switch (variant) {
-        case 'table':
-            return <TableSkeleton rows={rows} cols={cols} />;
-        case 'card':
-            return <CardSkeleton lines={lines} height={height} />;
-        case 'text':
-            return <TextSkeleton lines={lines} />;
-        case 'widget':
-            return <WidgetSkeleton />;
-        case 'auth':
-            return <AuthSkeleton />;
-        default:
-            return <TextSkeleton lines={3} />;
-    }
-}

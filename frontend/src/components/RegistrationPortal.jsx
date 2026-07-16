@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import LoadingSpinner from './LoadingSpinner';
@@ -26,9 +26,6 @@ export default function RegistrationPortal() {
     const [regError, setRegError] = useState('');
     const [success, setSuccess] = useState('');
     const [step, setStep] = useState(invite ? 'register' : 'code');
-
-    const [inviteCode, setInviteCode] = useState(urlCode);
-    const [codeError] = useState('');
 
     async function handleRegister(e) {
         e.preventDefault();

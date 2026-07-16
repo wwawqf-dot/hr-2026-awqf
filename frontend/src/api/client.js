@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
 
 class ApiError extends Error {
@@ -69,22 +68,6 @@ async function safeSupabase(promise, fallback = 'حدث خطأ غير متوقع
 
 function rpc(fn, args) {
     return safeSupabase(supabase.rpc(fn, args));
-}
-
-async function rpcAdmin(fn, args) {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) {
-        throw new ApiError('لا توجد جلسة نشطة لتأكيد العملية', 401);
-    }
-    const ephemeral = createClient(
-        import.meta.env.VITE_SUPABASE_URL,
-        import.meta.env.VITE_SUPABASE_ANON_KEY,
-        {
-            auth: { persistSession: false, autoRefreshToken: false },
-            global: { headers: { Authorization: `Bearer ${session.access_token}` } },
-        }
-    );
-    return safeSupabase(ephemeral.rpc(fn, args));
 }
 
 async function listYears() {
