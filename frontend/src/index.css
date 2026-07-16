@@ -672,8 +672,14 @@ code {
 @media (min-width: 769px) and (max-width: 1024px) {
     .app-shell { padding: 1.5rem; }
     .header { padding: 1.25rem 1.5rem; }
+    .header .title h1 { font-size: 1.5rem; }
     .regulations-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
     th, td { padding: 0.9rem 0.9rem; }
+    .table-container { border-radius: 16px; }
+    .modal-content { max-width: 85%; }
+    .panel { padding: 1.4rem; }
+    .search-container { padding: 0.45rem 0.9rem; }
+    .leave-calculation .audit-filters { flex-direction: column; align-items: stretch; }
 }
 
 /* ---------- Mobile (phones, under 768px) ---------- */
@@ -721,10 +727,11 @@ code {
     }
     .nav-tab { width: 100%; padding: 0.85rem 1.1rem; }
 
-    th, td { padding: 0.75rem 0.8rem; }
+    th, td { padding: 0.75rem 0.8rem; font-size: 0.82rem; }
+    th { font-size: 0.78rem; }
 
     /* Touch targets: buttons and inputs get at least 44px of height. */
-    .btn { min-height: 44px; }
+    .btn { min-height: 44px; font-size: 0.88rem; }
     .btn-icon { min-width: 44px; min-height: 44px; padding: 0.5rem; font-size: 1rem; }
     .btn-icon-text { min-height: 44px; padding: 0.6rem 0.9rem; font-size: 0.9rem; }
     .form-group input, .form-group select { min-height: 44px; font-size: 1rem; }
@@ -742,11 +749,49 @@ code {
     .modal-title { font-size: 1.1rem; }
 
     .panel { padding: 1.1rem; }
+    .panel h2 { font-size: 1.05rem; }
     .search-container { padding: 0.4rem 0.8rem; }
 
     /* Keep the horizontal-scroll table from stretching the page shell —
        overflow stays contained inside .table-container, never the body. */
     .table-container { border-radius: 14px; -webkit-overflow-scrolling: touch; }
+
+    /* Deduction modal: balance warning text wraps */
+    .calculated-days { flex-direction: column; gap: 0.5rem; text-align: center; }
+
+    /* Legal audit: controls stack vertically */
+    .leave-calculation .audit-controls { flex-direction: column; }
+    .leave-calculation .audit-filters { flex-direction: column; align-items: stretch; }
+    .leave-calculation .audit-summary { width: 100%; }
+    .leave-calculation .audit-badge { flex: 1; justify-content: center; }
+    .legal-audit-table th,
+    .legal-audit-table td { padding: 0.7rem 0.6rem; font-size: 0.78rem; }
+
+    /* User management: glassmorphism form panel */
+    .panel[style*="max-width: 600px"] { margin: 0 0 16px !important; }
+
+    /* Settings: year chips wrap better */
+    .year-chip { font-size: 0.85rem; padding: 0.4rem 0.4rem 0.4rem 0.8rem; }
+
+    /* Print report modal: year selector dropdown fits */
+    .modal select[style*="min-width: 180px"] { min-width: 100% !important; }
+}
+
+/* ---------- Small phones (under 420px) ---------- */
+@media (max-width: 420px) {
+    .app-shell { padding: 0.5rem; }
+    .header { padding: 0.75rem; border-radius: 14px; }
+    .title h1 { font-size: 1.1rem; }
+    .nav-tab { padding: 0.7rem 0.85rem; font-size: 0.82rem; }
+    th, td { padding: 0.5rem 0.4rem; font-size: 0.72rem; }
+    th { font-size: 0.7rem; }
+    .panel { padding: 0.85rem; border-radius: 14px; }
+    .modal-content { padding: 1rem; width: 95%; }
+    .action-buttons { flex-direction: column; gap: 0.3rem; }
+    .btn { min-height: 40px; font-size: 0.82rem; padding: 0.5rem 0.8rem; }
+    .role-badge { font-size: 0.7rem; padding: 0.15rem 0.5rem; }
+    .form-error { font-size: 0.8rem; padding: 0.5rem 0.7rem; }
+    .header-user { flex-direction: column; align-items: flex-start; gap: 0.4rem; }
 }
 
 /* ---------- Printing the employees table directly (Ctrl+P) ---------- */
