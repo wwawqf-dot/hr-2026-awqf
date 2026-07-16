@@ -1,19 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { api } from '../api/client';
 import LoadingSpinner from './LoadingSpinner';
+
+function parseInviteCode(code) {
+    if (!code) return null;
+    const parts = code.split('-');
+    if (parts.length < 3 || parts[0] !== 'WQF') return null;
+    const role = parts[1];
+    if (role !== 'data_entry' && role !== 'viewer') return null;
+    return { role, code };
+}
 
 export default function RegistrationPortal() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const urlCode = searchParams.get('code') || '';
 
-    const [step, setStep] = useState(urlCode ? 'verify' : 'code');
-    const [inviteCode, setInviteCode] = useState(urlCode);
-    const [role, setRole] = useState('');
-    const [validating, setValidating] = useState(false);
-    const [codeError, setCodeError] = useState('');
+    const invite = useMemo(() => parseInviteCode(urlCode), [urlCode]);
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -21,35 +25,10 @@ export default function RegistrationPortal() {
     const [registering, setRegistering] = useState(false);
     const [regError, setRegError] = useState('');
     const [success, setSuccess] = useState('');
+    const [step, setStep] = useState(invite ? 'register' : 'code');
 
-    useEffect(() => {
-        if (urlCode) {
-            validateCode(urlCode);
-        }
-    }, [urlCode]);
-
-    async function validateCode(code) {
-        setValidating(true);
-        setCodeError('');
-        try {
-            const result = await api.validateInviteCode(code);
-            if (result.valid) {
-                setRole(result.role);
-                setStep('register');
-            } else {
-                setCodeError(result.error || 'رمز الدعوة غير صالح');
-            }
-        } catch (err) {
-            setCodeError(err.message || 'رمز الدعوة غير صالح');
-        } finally {
-            setValidating(false);
-        }
-    }
-
-    async function handleVerifyCode(e) {
-        e.preventDefault();
-        await validateCode(inviteCode.trim());
-    }
+    const [inviteCode, setInviteCode] = useState(urlCode);
+    const [codeError] = useState('');
 
     async function handleRegister(e) {
         e.preventDefault();
@@ -64,6 +43,7 @@ export default function RegistrationPortal() {
 
         setRegistering(true);
         try {
+            const role = invite?.role || 'viewer';
             const { data, error } = await supabase.auth.signUp({
                 email: email.trim(),
                 password,
@@ -73,10 +53,6 @@ export default function RegistrationPortal() {
             });
             if (error) throw error;
             if (!data?.user) throw new Error('تعذر إنشاء الحساب');
-
-            try {
-                await api.consumeInviteCode(inviteCode.trim(), data.user.id);
-            } catch (_) { /* consume best-effort */ }
 
             setSuccess(`تم إنشاء الحساب بنجاح!
 يمكنك الآن تسجيل الدخول باستخدام بريدك الإلكتروني وكلمة المرور.
@@ -116,44 +92,19 @@ export default function RegistrationPortal() {
                     </p>
                 </div>
 
-                {/* Step 1: Enter Invite Code */}
                 {step === 'code' && (
-                    <form onSubmit={handleVerifyCode}>
-                        {codeError && <div className="form-error" style={{ marginBottom: 16 }}>{codeError}</div>}
-                        <div className="form-group" style={{ margin: '0 0 16px', textAlign: 'right' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: '0.9rem' }}>
-                                <i className="fas fa-key" style={{ color: 'var(--text-muted)', fontSize: 13 }}></i>
-                                رمز الدعوة
-                            </label>
-                            <input
-                                type="text"
-                                value={inviteCode}
-                                onChange={(e) => setInviteCode(e.target.value)}
-                                placeholder="أدخل رمز الدعوة"
-                                style={{ direction: 'ltr', textAlign: 'center', fontFamily: 'monospace', fontSize: '1.1rem', letterSpacing: 2 }}
-                                dir="ltr"
-                            />
+                    <div style={{ padding: '1.5rem 0' }}>
+                        <div className="form-error" style={{ marginBottom: 16, padding: '1rem', fontSize: '0.9rem' }}>
+                            <i className="fas fa-info-circle" style={{ marginLeft: 6 }}></i>
+                            إنشاء الحساب متاح فقط عبر رابط دعوة من المسؤول.
                         </div>
-                        <button type="submit" className="btn btn-primary" disabled={validating || !inviteCode.trim()} style={{
-                            width: '100%', justifyContent: 'center', minHeight: 48, fontSize: '1rem', fontWeight: 800, borderRadius: 12,
-                            background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-                        }}>
-                            {validating && <LoadingSpinner size={18} color="#fff" style={{ marginLeft: 10 }} />}
-                            <i className="fas fa-check"></i> {validating ? 'جاري التحقق...' : 'تحقق من الرمز'}
-                        </button>
-                    </form>
-                )}
-
-                {/* Step 2: Verifying */}
-                {step === 'verify' && (
-                    <div style={{ padding: '2rem 0' }}>
-                        <LoadingSpinner size={32} color="#8b5cf6" />
-                        <p style={{ color: 'var(--text-muted)', marginTop: 16, fontSize: '0.9rem' }}>جاري التحقق من رمز الدعوة...</p>
-                        {codeError && <div className="form-error" style={{ marginTop: 12 }}>{codeError}</div>}
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                            يُرجى التواصل مع مدير النظام للحصول على رابط التسجيل.
+                        </p>
                     </div>
                 )}
 
-                {/* Step 3: Registration Form */}
+                {/* Registration Form */}
                 {step === 'register' && (
                     <form onSubmit={handleRegister}>
                         {success ? (
@@ -166,17 +117,18 @@ export default function RegistrationPortal() {
                             </div>
                         ) : (
                             <>
-                                <div style={{
-                                    background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.15)',
-                                    borderRadius: 10, padding: '0.6rem 1rem', marginBottom: 20,
-                                    display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: '#c4b5fd',
-                                }}>
-                                    <i className="fas fa-tag"></i>
-                                    <span style={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 1, direction: 'ltr' }}>{inviteCode}</span>
-                                    <span style={{ marginRight: 'auto', fontSize: '0.82rem' }}>
-                                        صلاحية: {role === 'data_entry' ? 'مُدخل بيانات' : 'متابع'}
-                                    </span>
-                                </div>
+                                {invite && (
+                                    <div style={{
+                                        background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.15)',
+                                        borderRadius: 10, padding: '0.6rem 1rem', marginBottom: 20,
+                                        display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: '#c4b5fd',
+                                    }}>
+                                        <i className="fas fa-tag"></i>
+                                        <span style={{ marginRight: 'auto', fontSize: '0.82rem' }}>
+                                            صلاحية: {invite.role === 'data_entry' ? 'مُدخل بيانات' : 'متابع'}
+                                        </span>
+                                    </div>
+                                )}
 
                                 {regError && <div className="form-error" style={{ marginBottom: 16 }}>{regError}</div>}
 
@@ -215,8 +167,7 @@ export default function RegistrationPortal() {
                 )}
 
                 <div style={{ marginTop: 24, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                    {step !== 'register' && <span>لديك حساب بالفعل؟ <a href="#" onClick={(e) => { e.preventDefault(); navigate('/'); }} style={{ color: '#8b5cf6', fontWeight: 700 }}>تسجيل الدخول</a></span>}
-                    {step === 'register' && !success && <span style={{ color: '#6b7280' }}>بعد التسجيل يمكنك الدخول مباشرة</span>}
+                    <span>لديك حساب بالفعل؟ <a href="#" onClick={(e) => { e.preventDefault(); navigate('/'); }} style={{ color: '#8b5cf6', fontWeight: 700 }}>تسجيل الدخول</a></span>
                 </div>
             </div>
         </div>

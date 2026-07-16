@@ -156,7 +156,7 @@ export const api = {
     getSettings: async () => {
         const rows = await safeSupabase(supabase.from('settings').select('key, value'));
         const settings = {};
-        (rows || []).forEach((r) => { settings[r.key] = r.value; });
+        (rows || []).forEach((r) => { if (!r.key.startsWith('invite_code:')) settings[r.key] = r.value; });
         return { settings };
     },
     updateSettings: async (payload) => {
@@ -191,57 +191,60 @@ export const api = {
             })),
         };
     },
-    addUser: async (email, password, role) => {
-        const data = await rpcAdmin('create_auth_user', {
-            p_email: email,
-            p_password: password,
-            p_role: role,
-        });
-        return { id: data.id, email: data.email, role: data.role };
-    },
-    deleteUser: async (id) => {
-        await rpcAdmin('delete_auth_user', { p_id: id });
-        return { message: 'تم حذف المستخدم' };
-    },
 
-    // ---- Invite codes -------------------------------------------------
+    // ---- Invite codes (stored in settings table) --------------------
     generateInviteCode: async (role) => {
-        const code = 'WQF-' + Array.from({ length: 10 }, () =>
+        const rand = Array.from({ length: 10 }, () =>
             Math.floor(Math.random() * 16).toString(16)
-        ).join('').toUpperCase();
+        ).join('');
+        const code = `WQF-${role}-${rand}`;
+        const payload = { code, role, is_used: false, created_at: new Date().toISOString() };
         await safeSupabase(
-            supabase.from('invite_codes').insert([{ code, role }])
+            supabase.from('settings').upsert(
+                { key: `invite_code:${code}`, value: JSON.stringify(payload) },
+                { onConflict: 'key' }
+            )
         );
         return code;
     },
     getInviteCodes: async () => {
         const rows = await safeSupabase(
-            supabase.from('invite_codes').select('*').order('created_at', { ascending: false })
+            supabase.from('settings').select('key, value').like('key', 'invite_code:%')
         );
-        return { codes: rows || [] };
+        const codes = (rows || [])
+            .map(r => { try { return JSON.parse(r.value); } catch { return null; } })
+            .filter(Boolean)
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        return { codes };
     },
+    // Validate an invite code — reads from settings table (must be authenticated)
     validateInviteCode: async (code) => {
+        const key = `invite_code:${code}`;
         try {
-            const data = await safeSupabase(
-                supabase.from('invite_codes').select('role').eq('code', code).eq('is_used', false).single()
+            const row = await safeSupabase(
+                supabase.from('settings').select('value').eq('key', key).single()
             );
-            return { valid: true, role: data.role };
+            const data = JSON.parse(row.value);
+            if (data.is_used) return { valid: false, error: 'رمز الدعوة مستخدم مسبقاً' };
+            return { valid: true, role: data.role, code: data.code };
         } catch (e) {
             if (e instanceof ApiError && e.status === 406) {
-                return { valid: false, error: 'رمز الدعوة غير صحيح أو مستخدم مسبقاً' };
+                return { valid: false, error: 'رمز الدعوة غير صحيح' };
             }
             throw e;
         }
     },
-    consumeInviteCode: async (code, userId) => {
-        await safeSupabase(
-            supabase.from('invite_codes').update({ is_used: true }).eq('code', code).eq('is_used', false)
+    consumeInviteCode: async (code) => {
+        const key = `invite_code:${code}`;
+        const row = await safeSupabase(
+            supabase.from('settings').select('value').eq('key', key).single()
         );
-        if (userId) {
-            await safeSupabase(
-                supabase.from('profiles').update({ role: 'data_entry' }).eq('id', userId)
-            );
-        }
+        const data = JSON.parse(row.value);
+        data.is_used = true;
+        data.consumed_at = new Date().toISOString();
+        await safeSupabase(
+            supabase.from('settings').update({ value: JSON.stringify(data) }).eq('key', key)
+        );
         return { message: 'تم استهلاك رمز الدعوة' };
     },
 
