@@ -9,6 +9,9 @@ import SettingsPage from './components/SettingsPage';
 import Regulations from './components/Regulations';
 import LeaveCalculation from './components/LeaveCalculation';
 
+const PUBLIC_TABS = ['employees', 'regulations', 'auditCalc'];
+const ADMIN_TABS = ['users', 'audit', 'settings'];
+
 export default function App() {
     const { user, loading } = useAuth();
     const [view, setView] = useState('employees');
@@ -25,16 +28,18 @@ export default function App() {
         return <Login />;
     }
 
-    const activeView = user.role === 'admin' ? view : 'employees';
+    const isAdmin = user.role === 'admin';
+    const allowedViews = isAdmin ? [...PUBLIC_TABS, ...ADMIN_TABS] : PUBLIC_TABS;
+    const activeView = allowedViews.includes(view) ? view : 'employees';
 
     return (
         <div className="app-shell">
             <div className="container">
-                {user.role === 'admin' && <NavTabs view={activeView} setView={setView} />}
+                <NavTabs view={activeView} setView={setView} role={user.role} />
                 {activeView === 'employees' && <EmployeesPage />}
-                {activeView === 'users' && <UsersPage />}
-                {activeView === 'audit' && <AuditPage />}
-                {activeView === 'settings' && <SettingsPage />}
+                {activeView === 'users' && isAdmin && <UsersPage />}
+                {activeView === 'audit' && isAdmin && <AuditPage />}
+                {activeView === 'settings' && isAdmin && <SettingsPage />}
                 {activeView === 'regulations' && <Regulations />}
                 {activeView === 'auditCalc' && <LeaveCalculation />}
             </div>
