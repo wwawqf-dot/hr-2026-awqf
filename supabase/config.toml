@@ -1,0 +1,5 @@
+[functions]
+managed = true
+
+[functions.manage-users]
+verify_jwt = true

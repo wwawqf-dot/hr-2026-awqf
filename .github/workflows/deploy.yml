@@ -1,8 +1,4 @@
-name: Deploy to GitHub Pages
-
-# Builds the Vite frontend and publishes it to GitHub Pages on every push
-# to main. The Supabase anon key is read from repo Secrets — nothing secret
-# is committed. `base` is derived from the repo name automatically.
+name: Deploy to GitHub Pages & Edge Function
 
 on:
   push:
@@ -19,6 +15,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  deploy-edge-function:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy manage-users Edge Function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy manage-users \
+            --project-ref uzmhsesmszngkanjsjgy \
+            --no-verify-jwt
+
   build:
     runs-on: ubuntu-latest
     defaults:

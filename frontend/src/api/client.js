@@ -210,18 +210,47 @@ export const api = {
         };
     },
     addUser: async (payload) => {
-        // Uses ephemeral client so the admin's own session is never touched.
-        const result = await rpcAdmin('create_auth_user', {
-            p_email: payload.username,
-            p_password: payload.password,
-            p_role: payload.role || 'data_entry',
-        });
-        return { user: result };
+        // Try Edge Function first (no session side-effects). If the function
+        // hasn't been deployed yet (404), fall back to the RPC admin client.
+        try {
+            const { data, error } = await supabase.functions.invoke('manage-users', {
+                body: { action: 'create', email: payload.username, password: payload.password, role: payload.role || 'data_entry' },
+            });
+            if (error) throw error;
+            if (data?.error) throw new ApiError(data.error, 400);
+            return { user: data.user };
+        } catch (e) {
+            const isFn404 = e?.message?.includes('not found') || e?.message?.includes('404');
+            if (e instanceof ApiError) throw e;
+            if (isFn404) {
+                // Edge Function not deployed — fall back to RPC.
+                const result = await rpcAdmin('create_auth_user', {
+                    p_email: payload.username,
+                    p_password: payload.password,
+                    p_role: payload.role || 'data_entry',
+                });
+                return { user: result };
+            }
+            throw new ApiError(e.message || 'تعذر إضافة المستخدم', 400);
+        }
     },
     deleteUser: async (id) => {
-        // Uses ephemeral client so the admin's own session is never touched.
-        await rpcAdmin('delete_auth_user', { p_id: id });
-        return { message: 'تم حذف المستخدم' };
+        try {
+            const { data, error } = await supabase.functions.invoke('manage-users', {
+                body: { action: 'delete', id },
+            });
+            if (error) throw error;
+            if (data?.error) throw new ApiError(data.error, 400);
+            return { message: 'تم حذف المستخدم' };
+        } catch (e) {
+            const isFn404 = e?.message?.includes('not found') || e?.message?.includes('404');
+            if (e instanceof ApiError) throw e;
+            if (isFn404) {
+                await rpcAdmin('delete_auth_user', { p_id: id });
+                return { message: 'تم حذف المستخدم' };
+            }
+            throw new ApiError(e.message || 'تعذر حذف المستخدم', 400);
+        }
     },
 
     // ---- Audit log ----------------------------------------------------

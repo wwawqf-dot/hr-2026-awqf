@@ -1,14 +1,3 @@
-// Supabase Edge Function: manage-users
-// ---------------------------------------------------------------------
-// Creates / deletes *login* accounts for the User Management panel.
-// This needs the service_role key (admin API), which must NEVER be shipped
-// to the browser — so it lives here, server-side. The function:
-//   1. verifies the CALLER is an authenticated admin (from their JWT),
-//   2. only then uses the service_role client to create/delete the user.
-//
-// Deploy:  supabase functions deploy manage-users
-// (SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY are
-//  injected automatically by the Supabase platform.)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const cors = {
@@ -52,25 +41,28 @@ Deno.serve(async (req) => {
         const body = await req.json().catch(() => ({}));
         const action = body?.action;
 
-        // 2) Perform the privileged operation.
         if (action === 'create') {
             const email = String(body.email ?? '').trim();
             const password = String(body.password ?? '');
+            const role = String(body.role ?? 'data_entry').trim();
             if (!email || password.length < 6) {
                 return json({ error: 'بريد إلكتروني أو كلمة مرور غير صالحة (6 أحرف على الأقل)' }, 400);
+            }
+            if (!['data_entry', 'viewer'].includes(role)) {
+                return json({ error: 'الصلاحية غير صالحة. يجب أن تكون data_entry أو viewer.' }, 400);
             }
             const { data, error } = await admin.auth.admin.createUser({
                 email,
                 password,
-                email_confirm: true, // internal system: usable immediately, no email step
-                user_metadata: { role: 'data_entry', username: email },
+                email_confirm: true,
+                user_metadata: { role, username: email },
             });
             if (error) return json({ error: error.message }, 400);
             return json({
                 user: {
                     id: data.user.id,
                     username: email,
-                    role: 'data_entry',
+                    role,
                     createdAt: data.user.created_at,
                 },
             });
@@ -82,8 +74,8 @@ Deno.serve(async (req) => {
             const { data: target } = await admin
                 .from('profiles').select('role').eq('id', id).single();
             if (!target) return json({ error: 'المستخدم غير موجود' }, 404);
-            if (target.role !== 'data_entry') {
-                return json({ error: 'لا يمكن حذف حسابات المدير، فقط مستخدمي إدخال البيانات' }, 400);
+            if (target.role !== 'data_entry' && target.role !== 'viewer') {
+                return json({ error: 'لا يمكن حذف حسابات المدير' }, 400);
             }
             const { error } = await admin.auth.admin.deleteUser(id);
             if (error) return json({ error: error.message }, 400);
