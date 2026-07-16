@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
-import { ApiError } from '../api/client';
+import { ApiError, setOnAuthExpired } from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -56,6 +56,15 @@ export function AuthProvider({ children }) {
             active = false;
             sub.subscription.unsubscribe();
         };
+    }, []);
+
+    // Register the session-expiry callback so safeSupabase in client.js
+    // can trigger a forced logout when the server returns 401 / JWT error.
+    useEffect(() => {
+        setOnAuthExpired(() => {
+            supabase.auth.signOut().catch(() => {});
+            setUser(null);
+        });
     }, []);
 
     const login = useCallback(async (username, password) => {

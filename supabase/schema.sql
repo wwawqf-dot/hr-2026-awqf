@@ -266,7 +266,9 @@ begin
         from public.profiles where id = auth.uid();
     if v_role is null then raise exception 'الحساب غير مُهيأ'; end if;
 
-    select * into emp from public.employees where id = p_employee_id;
+    -- Pessimistic row lock: prevents two concurrent deductions from both
+    -- passing the insufficient-balance check before either one commits.
+    select * into emp from public.employees where id = p_employee_id for update;
     if not found then raise exception 'الموظف غير موجود'; end if;
 
     v_note := nullif(left(trim(coalesce(p_payload->>'note','')), 500), '');
@@ -325,6 +327,13 @@ begin
     update public.employee_years set deducted = deducted + v_days
         where employee_id = emp.id and year = v_year;
 
+    -- Post-update sanity check (defence in depth against race / logic bugs).
+    if coalesce((select coalesce(emp.initial_carried_forward,0)
+                  + sum(coalesce(added,0) - coalesce(deducted,0))
+             from public.employee_years where employee_id = emp.id), 0) < 0 then
+        raise exception 'خطأ داخلي: الرصيف سالب بعد الخصم - تم إلغاء العملية';
+    end if;
+
     insert into public.deductions (employee_id, year, start_date, end_date, days, note, created_by, created_at)
     values (emp.id, v_year, v_start, v_end, v_days, v_note, v_username, now());
 
@@ -350,7 +359,7 @@ begin
     if v_role is distinct from 'admin' then
         raise exception 'هذه العملية مقصورة على المدير';
     end if;
-    select * into d from public.deductions where id = p_deduction_id;
+    select * into d from public.deductions where id = p_deduction_id for update;
     if not found then raise exception 'سجل الخصم غير موجود'; end if;
 
     update public.employee_years set deducted = greatest(0, deducted - d.days)
@@ -465,7 +474,7 @@ begin
         raise exception 'هذه العملية مقصورة على المدير';
     end if;
 
-    select * into emp from public.employees where id = p_id;
+    select * into emp from public.employees where id = p_id for update;
     if not found then raise exception 'الموظف غير موجود'; end if;
 
     v_name := trim(coalesce(p_payload->>'name',''));
@@ -540,7 +549,7 @@ begin
     if v_role is distinct from 'admin' then
         raise exception 'هذه العملية مقصورة على المدير';
     end if;
-    select * into emp from public.employees where id = p_id;
+    select * into emp from public.employees where id = p_id for update;
     if not found then raise exception 'الموظف غير موجود'; end if;
 
     update public.employees set is_frozen = not is_frozen where id = p_id;

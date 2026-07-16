@@ -7,17 +7,78 @@ class ApiError extends Error {
     }
 }
 
-function must({ data, error }, fallback = 'حدث خطأ غير متوقع') {
-    if (error) throw new ApiError(error.message || fallback, error.status || 400);
-    return data;
+// ----------------------------------------------------------------
+//  SAFETY WRAPPER — network resilience + session expiry detection
+// ----------------------------------------------------------------
+
+// Registered by AuthContext so a 401 can trigger a logout redirect
+// without creating a circular dependency.
+let onAuthExpired = null;
+export function setOnAuthExpired(fn) { onAuthExpired = fn; }
+
+function isNetworkError(error) {
+    if (!error) return false;
+    const msg = (error.message || '').toLowerCase();
+    return /fetch failed|networkerror|network error|failed to fetch|request terminated|abort/i.test(msg)
+        || error.name === 'TypeError' && (msg.includes('fetch') || msg.includes('network'));
 }
 
-async function rpc(fn, args) {
-    return must(await supabase.rpc(fn, args));
+function isAuthExpired(error) {
+    if (!error) return false;
+    const status = error.status ?? error.code ?? 0;
+    const msg = (error.message || '').toLowerCase();
+    return status === 401 || msg.includes('jwt') || msg.includes('not authenticated') || msg.includes('auth');
+}
+
+function isServerError(error) {
+    if (!error) return false;
+    const status = error.status ?? error.code ?? 0;
+    return status >= 500;
+}
+
+const NETWORK_MSG = 'فشل الاتصال بالخادم، يرجى التحقق من الإنترنت وإعادة المحاولة.';
+const SESSION_MSG = 'انتهت صلاحية الجلسة. يرجى تسجيل الدخول مرة أخرى.';
+const SERVER_MSG  = 'الخادم غير متاح حالياً، يرجى المحاولة لاحقاً.';
+
+function classifyError(error) {
+    if (isNetworkError(error)) return { status: 0, message: NETWORK_MSG };
+    if (isAuthExpired(error))  return { status: 401, message: SESSION_MSG };
+    if (isServerError(error))  return { status: 503, message: SERVER_MSG };
+    return null;
+}
+
+async function safeSupabase(promise, fallback = 'حدث خطأ غير متوقع') {
+    try {
+        const { data, error } = await promise;
+        if (error) {
+            const classified = classifyError(error);
+            if (classified) {
+                if (classified.status === 401 && onAuthExpired) onAuthExpired();
+                throw new ApiError(classified.message, classified.status);
+            }
+            throw new ApiError(error.message || fallback, error.status || 400);
+        }
+        return data;
+    } catch (e) {
+        if (e instanceof ApiError) throw e;
+        const classified = classifyError(e);
+        if (classified) {
+            if (classified.status === 401 && onAuthExpired) onAuthExpired();
+            throw new ApiError(classified.message, classified.status);
+        }
+        if (isServerError(e)) throw new ApiError(SERVER_MSG, 503);
+        if (isNetworkError(e)) throw new ApiError(NETWORK_MSG, 0);
+        throw new ApiError(fallback, 400);
+    }
+}
+
+// Shorthand for RPC-only calls.
+function rpc(fn, args) {
+    return safeSupabase(supabase.rpc(fn, args));
 }
 
 async function listYears() {
-    const data = must(await supabase.from('years').select('year'));
+    const data = await safeSupabase(supabase.from('years').select('year'));
     return { years: (data || []).map((r) => r.year).sort((a, b) => Number(a) - Number(b)) };
 }
 
@@ -29,13 +90,14 @@ async function listExpiringLeaves(windowDays = 7) {
     const fmt = (d) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-    const { data, error } = await supabase
-        .from('deductions')
-        .select('id, end_date, start_date, days, employee:employees(name, job_number)')
-        .gte('end_date', fmt(today))
-        .lte('end_date', fmt(ceiling))
-        .order('end_date');
-    if (error) throw new ApiError(error.message, 400);
+    const data = await safeSupabase(
+        supabase
+            .from('deductions')
+            .select('id, end_date, start_date, days, employee:employees(name, job_number)')
+            .gte('end_date', fmt(today))
+            .lte('end_date', fmt(ceiling))
+            .order('end_date')
+    );
 
     return {
         expiring: (data || []).map((d) => ({
@@ -48,13 +110,17 @@ async function listExpiringLeaves(windowDays = 7) {
     };
 }
 
+// ----------------------------------------------------------------
+//  PUBLIC API
+// ----------------------------------------------------------------
+
 export const api = {
     // ---- Employees & roster ------------------------------------------
     getEmployees: () => rpc('list_employees'),
     addEmployee: (payload) => rpc('create_employee', { p_payload: payload }),
     updateEmployee: (id, payload) => rpc('update_employee', { p_id: id, p_payload: payload }),
     deleteEmployee: async (id) => {
-        must(await supabase.from('employees').delete().eq('id', id));
+        await safeSupabase(supabase.from('employees').delete().eq('id', id));
         return { message: 'تم حذف الموظف' };
     },
     toggleFreeze: (id) => rpc('toggle_employee_freeze', { p_id: id }),
@@ -82,7 +148,7 @@ export const api = {
 
     // ---- Settings -----------------------------------------------------
     getSettings: async () => {
-        const rows = must(await supabase.from('settings').select('key, value'));
+        const rows = await safeSupabase(supabase.from('settings').select('key, value'));
         const settings = {};
         (rows || []).forEach((r) => { settings[r.key] = r.value; });
         return { settings };
@@ -100,14 +166,14 @@ export const api = {
                 throw new ApiError('يرجى إدخال تاريخ مرجعي صحيح بصيغة YYYY-MM-DD', 400);
             upserts.push({ key: 'system_reference_date', value: payload.system_reference_date });
         }
-        if (upserts.length) must(await supabase.from('settings').upsert(upserts, { onConflict: 'key' }));
+        if (upserts.length) await safeSupabase(supabase.from('settings').upsert(upserts, { onConflict: 'key' }));
         return api.getSettings();
     },
 
     // ---- Users --------------------------------------------------------
     getUsers: async () => {
-        const rows = must(
-            await supabase.from('profiles').select('id, username, role, created_at').order('created_at')
+        const rows = await safeSupabase(
+            supabase.from('profiles').select('id, username, role, created_at').order('created_at')
         );
         return {
             users: (rows || []).map((u) => ({
@@ -134,8 +200,8 @@ export const api = {
 
     // ---- Audit log ----------------------------------------------------
     getAuditLog: async () => {
-        const rows = must(
-            await supabase
+        const rows = await safeSupabase(
+            supabase
                 .from('audit_log')
                 .select('id, user_id, username, role, action, details, timestamp')
                 .order('id', { ascending: false })
@@ -167,7 +233,7 @@ export const api = {
         return { message: 'قاعدة البيانات على Supabase تُنسخ احتياطياً تلقائياً. استخدم "تصدير JSON" لأخذ نسخة محلية.' };
     },
     deleteAllRecords: async () => {
-        must(await supabase.from('employees').delete().neq('id', 0));
+        await safeSupabase(supabase.from('employees').delete().neq('id', 0));
         return { message: 'تم حذف جميع سجلات الموظفين بنجاح' };
     },
 };

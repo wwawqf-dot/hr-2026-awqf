@@ -1,12 +1,15 @@
-import { Fragment } from 'react';
+import { Fragment, useMemo } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
 import { computeYearlyLedger } from '../utils/leaveCalc';
 
 export default function EmployeesTable({ employees, years, onDeduct, onEdit, onDelete }) {
     const { canDeduct, canEdit, canDelete } = usePermissions();
 
-    const sortedEmployees = [...employees].sort(
-        (a, b) => (a.is_frozen ? 1 : 0) - (b.is_frozen ? 1 : 0)
+    // Memoized sort: only re-sort when the employees array identity changes
+    // (i.e., after a mutation, not on every keystroke in the search bar).
+    const sortedEmployees = useMemo(
+        () => [...employees].sort((a, b) => (a.is_frozen ? 1 : 0) - (b.is_frozen ? 1 : 0)),
+        [employees]
     );
 
     if (employees.length === 0) {
