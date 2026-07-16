@@ -135,17 +135,15 @@ export default function LeaveCalculation() {
                             <th>#</th>
                             <th>الاسم</th>
                             <th>الرصيد السنوي</th>
-                            <th>المستحق ({earnedMonths} شهر)</th>
-                            <th>المرحّل من السابق</th>
-                            <th>إجمالي المخصوم</th>
+                            <th>المستحق ({earnedMonths} أشهر)</th>
                             <th>المستهلك من رصيد {activeYear}</th>
-                            <th>الرصيد المتاح حالياً</th>
+                            <th>الرصيد المتاح حالياً من {activeYear}</th>
                         </tr>
                     </thead>
                     <tbody>
                         {rows.length === 0 ? (
                             <tr>
-                                <td colSpan={8} className="empty-state">لا يوجد موظفون لعرضهم</td>
+                                <td colSpan={6} className="empty-state">لا يوجد موظفون لعرضهم</td>
                             </tr>
                         ) : (
                             rows.map((row, i) => (
@@ -159,10 +157,6 @@ export default function LeaveCalculation() {
                                     </td>
                                     <td>{row.annualAllowance} يوم</td>
                                     <td>{row.legalEarned} يوم</td>
-                                    <td className="carry-cell">{row.previousCarryOver} يوم</td>
-                                    <td className={row.totalDeducted > 0 ? 'consumed-cell' : ''}>
-                                        {row.totalDeducted > 0 ? `${row.totalDeducted} يوم` : '—'}
-                                    </td>
                                     <td className={row.consumedFromCurrent > 0 ? 'consumed-cell' : ''}>
                                         {row.consumedFromCurrent > 0 ? `${row.consumedFromCurrent} يوم` : '—'}
                                     </td>
