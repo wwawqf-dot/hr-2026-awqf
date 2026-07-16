@@ -126,7 +126,10 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
         // separate leading column further left in the table.
         years.forEach((year) => {
             html += `
-                <th style="white-space: nowrap;">(الصافي التراكمي للسنوات السابقة) حتى تاريخ 31/12/${year - 1}</th>
+                <th style="white-space: nowrap; line-height: 1.3; padding: 8px 7px;">
+                    (الصافي التراكمي للسنوات السابقة)<br>
+                    <span style="font-size: 0.75em; font-weight: 600;">حتى تاريخ 31/12/${year - 1}</span>
+                </th>
                 <th>مضاف ${year}</th>
                 <th>مخصوم ${year}</th>
                 <th>الصافي التراكمي ${year}</th>

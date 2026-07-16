@@ -11,10 +11,7 @@ export default function SettingsPage() {
         exportBackup, serverBackup, importBackup, deleteAllRecords, bulkAddEmployees,
     } = useLeaveData();
 
-    const [dateValue, setDateValue] = useState('');
-    const [dateError, setDateError] = useState('');
-    const [dateSuccess, setDateSuccess] = useState('');
-    const [savingDate, setSavingDate] = useState(false);
+
 
 
     const [newYear, setNewYear] = useState('');
@@ -35,26 +32,7 @@ export default function SettingsPage() {
     const [importingExcel, setImportingExcel] = useState(false);
     const excelInputRef = useRef(null);
 
-    const currentDate = dateValue || settings.openingBalanceDate || '';
 
-    async function handleSaveDate(e) {
-        e.preventDefault();
-        setDateError('');
-        setDateSuccess('');
-        if (!currentDate) {
-            setDateError('يرجى اختيار تاريخ صحيح');
-            return;
-        }
-        setSavingDate(true);
-        try {
-            await updateSettings({ openingBalanceDate: currentDate });
-            setDateSuccess('تم تحديث تاريخ قطع الرصيد التراكمي بنجاح.');
-        } catch (err) {
-            setDateError(err.message || 'تعذر تحديث التاريخ');
-        } finally {
-            setSavingDate(false);
-        }
-    }
 
 
     async function handleAddYear(e) {
@@ -232,40 +210,7 @@ export default function SettingsPage() {
             <PageHeader />
 
             <div className="panel">
-                <h2><i className="fas fa-calendar-day"></i> الرصيد التراكمي للسنوات السابقة</h2>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '1.25rem' }}>
-                    هذا التاريخ يحدد آخر نقطة تجميع للرصيد التراكمي، ويظهر بجانب "الرصيد التراكمي (للسنوات السابقة)"
-                    في جدول الموظفين ونموذج إضافة/تعديل موظف.
-                </p>
-                {dateError && <div className="form-error">{dateError}</div>}
-                {dateSuccess && (
-                    <div
-                        className="form-error"
-                        style={{
-                            background: 'rgba(16, 185, 129, 0.1)',
-                            borderColor: 'rgba(16, 185, 129, 0.35)',
-                            color: 'var(--emerald)',
-                        }}
-                    >
-                        {dateSuccess}
-                    </div>
-                )}
-                <form className="inline-form" onSubmit={handleSaveDate}>
-                    <div className="form-group">
-                        <label>تاريخ قطع الرصيد التراكمي للسنوات السابقة</label>
-                        <input
-                            type="date"
-                            value={currentDate}
-                            onChange={(e) => {
-                                setDateValue(e.target.value);
-                                setDateSuccess('');
-                            }}
-                        />
-                    </div>
-                    <button type="submit" className="btn btn-primary" disabled={savingDate || loading}>
-                        <i className="fas fa-save"></i> {savingDate ? 'جاري الحفظ...' : 'حفظ التاريخ'}
-                    </button>
-                </form>
+
 
                 <div style={{ borderTop: '1px dashed var(--table-border)', margin: '1.5rem 0 1rem' }}></div>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
