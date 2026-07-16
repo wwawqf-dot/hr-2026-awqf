@@ -209,19 +209,6 @@ export const api = {
             })),
         };
     },
-    addUser: async (payload) => {
-        try {
-            const result = await rpcAdmin('create_auth_user', {
-                p_email: payload.username,
-                p_password: payload.password,
-                p_role: payload.role || 'data_entry',
-            });
-            return { user: result };
-        } catch (e) {
-            if (e instanceof ApiError) throw e;
-            throw new ApiError(e.message || 'تعذر إضافة المستخدم', 400);
-        }
-    },
     deleteUser: async (id) => {
         try {
             await rpcAdmin('delete_auth_user', { p_id: id });
@@ -231,6 +218,17 @@ export const api = {
             throw new ApiError(e.message || 'تعذر حذف المستخدم', 400);
         }
     },
+
+    // ---- Invite codes -------------------------------------------------
+    generateInviteCode: (role) => rpc('generate_invite_code', { p_role: role }),
+    getInviteCodes: async () => {
+        const rows = await safeSupabase(
+            supabase.from('invite_codes').select('*').order('created_at', { ascending: false })
+        );
+        return { codes: rows || [] };
+    },
+    validateInviteCode: (code) => rpc('validate_invite_code', { p_code: code }),
+    consumeInviteCode: (code) => rpc('consume_invite_code', { p_code: code }),
 
     // ---- Audit log ----------------------------------------------------
     getAuditLog: async () => {
