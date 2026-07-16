@@ -13,6 +13,10 @@
     border-radius: 8px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateX(-50%) translateY(-16px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
 :root {
     --bg-color: #0b0f19;
     --glass-bg: rgba(19, 26, 42, 0.75);

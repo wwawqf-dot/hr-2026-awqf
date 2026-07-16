@@ -254,9 +254,8 @@ export default function SettingsPage() {
 
                 <div style={{ borderTop: '1px dashed var(--table-border)', margin: '1.5rem 0 1rem' }}></div>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                    <i className="fas fa-clock" style={{ color: '#60a5fa', marginLeft: 6 }}></i>
-                    يعتمد النظام الآن على <b>الساعة والتاريخ الفعليين للجهاز</b> (يتقدّمان تلقائياً) كـ "تاريخ اليوم الحالي"
-                    في جميع عمليات التحقق مثل قيد الأثر الرجعي (40 يوماً). يظهر التاريخ والوقت الحاليان أعلى الصفحة.
+                    <i className="fas fa-shield-alt" style={{ color: '#60a5fa', marginLeft: 6 }}></i>
+                    يعتمد النظام على توقيت شبكة آمن ومستقل (توقيت ليبيا - Africa/Tripoli) لمنع أي تلاعب في تواريخ الأجهزة المحلية، مما يضمن دقة قيد الـ 40 يوماً للخصم بأثر رجعي.
                 </p>
             </div>
 

@@ -8,15 +8,6 @@ class ApiError extends Error {
     }
 }
 
-// Secondary Supabase client for admin-only RPCs (user management).
-// NEVER persists session or auto-refreshes tokens, so calling it never
-// interferes with the admin's own login session.
-const supabaseEphemeral = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-);
-
 // ----------------------------------------------------------------
 //  SAFETY WRAPPER — network resilience + session expiry detection
 // ----------------------------------------------------------------
@@ -87,10 +78,27 @@ function rpc(fn, args) {
     return safeSupabase(supabase.rpc(fn, args));
 }
 
-// Ephemeral-client RPC: never touches the admin's persisted auth session.
-// Used exclusively for create_auth_user / delete_auth_user.
-function rpcAdmin(fn, args) {
-    return safeSupabase(supabaseEphemeral.rpc(fn, args));
+// Admin-only RPC: creates a fresh ephemeral Supabase client seeded with the
+// admin's own access token. This guarantees the RPC has an `authenticated`
+// JWT (so the GRANT passes) while NEVER touching the admin's persisted
+// session storage or triggering `onAuthStateChange` on the main client.
+// Without this, the RPC call would fail with a JWT auth error, which
+// `safeSupabase` would misinterpret as the admin's session expiring,
+// triggering a forced logout.
+async function rpcAdmin(fn, args) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+        throw new ApiError('لا توجد جلسة نشطة لتأكيد العملية', 401);
+    }
+    const ephemeral = createClient(
+        import.meta.env.VITE_SUPABASE_URL,
+        import.meta.env.VITE_SUPABASE_ANON_KEY,
+        {
+            auth: { persistSession: false, autoRefreshToken: false },
+            global: { headers: { Authorization: `Bearer ${session.access_token}` } },
+        }
+    );
+    return safeSupabase(ephemeral.rpc(fn, args));
 }
 
 async function listYears() {
