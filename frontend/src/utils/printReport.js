@@ -114,7 +114,7 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
             <thead>
                 <tr>
                     <th style="width: 40px;">#</th>
-                    <th style="min-width: 150px;">الاسم</th>
+                    <th style="min-width: 150px;">الاسم (الرقم الوظيفي)</th>
                     <th>الوطني</th>
                     <th>الصفة</th>
     `;
@@ -152,7 +152,10 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
         html += `
             <tr>
                 <td>${index + 1}</td>
-                <td class="name-col">${emp.name}</td>
+                <td class="name-col">
+                    <div style="font-weight:bold;">${emp.name}</div>
+                    ${emp.job_number ? `<div style="font-size:0.8em; color:#555; font-weight:600;">رقم وظيفي: ${emp.job_number}</div>` : ''}
+                </td>
                 <td>${emp.national_id || '-'}</td>
                 <td>${emp.job_title || '-'}</td>
         `;
