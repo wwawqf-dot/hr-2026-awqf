@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
 
 class ApiError extends Error {
@@ -6,6 +7,15 @@ class ApiError extends Error {
         this.status = status;
     }
 }
+
+// Secondary Supabase client for admin-only RPCs (user management).
+// NEVER persists session or auto-refreshes tokens, so calling it never
+// interferes with the admin's own login session.
+const supabaseEphemeral = createClient(
+    import.meta.env.VITE_SUPABASE_URL,
+    import.meta.env.VITE_SUPABASE_ANON_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+);
 
 // ----------------------------------------------------------------
 //  SAFETY WRAPPER — network resilience + session expiry detection
@@ -75,6 +85,12 @@ async function safeSupabase(promise, fallback = 'حدث خطأ غير متوقع
 // Shorthand for RPC-only calls.
 function rpc(fn, args) {
     return safeSupabase(supabase.rpc(fn, args));
+}
+
+// Ephemeral-client RPC: never touches the admin's persisted auth session.
+// Used exclusively for create_auth_user / delete_auth_user.
+function rpcAdmin(fn, args) {
+    return safeSupabase(supabaseEphemeral.rpc(fn, args));
 }
 
 async function listYears() {
@@ -186,7 +202,8 @@ export const api = {
         };
     },
     addUser: async (payload) => {
-        const result = await rpc('create_auth_user', {
+        // Uses ephemeral client so the admin's own session is never touched.
+        const result = await rpcAdmin('create_auth_user', {
             p_email: payload.username,
             p_password: payload.password,
             p_role: payload.role || 'data_entry',
@@ -194,7 +211,8 @@ export const api = {
         return { user: result };
     },
     deleteUser: async (id) => {
-        await rpc('delete_auth_user', { p_id: id });
+        // Uses ephemeral client so the admin's own session is never touched.
+        await rpcAdmin('delete_auth_user', { p_id: id });
         return { message: 'تم حذف المستخدم' };
     },
 
