@@ -1,10 +1,7 @@
 import { formatDateDisplay } from './formatDate';
-import { getLibyaTime } from './libyaTime';
+import { getLibyaTime, getAccrualLabel } from './libyaTime';
 import { computeYearlyLedger } from './leaveCalc';
 
-// Ported from the original standalone HTML file's generateReport(), kept
-// pixel-identical for the printed output while sourcing data from the
-// React app's state instead of the old localStorage-backed globals.
 export function printReport(selectedYear, years, employees, openingBalanceDate) {
     const isAllYears = selectedYear === 'all';
     const printWindow = window.open('', '_blank');
@@ -16,28 +13,18 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
     const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
     const formattedDate = getLibyaTime().toLocaleDateString('ar-LY', { ...dateOptions, timeZone: 'Africa/Tripoli' });
     const carriedLabel = `المرحل حتى ${formatDateDisplay(openingBalanceDate)}`;
+    const accrualLabel = getAccrualLabel();
+    const realLibyaYear = new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date());
 
-    // The comprehensive report grows by 4 columns per financial year (opening
-    // balance, added, deducted, closing balance — each year is now a
-    // self-contained block), so a fixed font size either wastes space (one
-    // year) or overflows the page (many years). Scale it down as the column
-    // count grows instead.
-    const fixedColumnCount = 4; // #, name, national id, job title
+    const fixedColumnCount = 4;
     const yearColumnCount = isAllYears ? years.length * 4 : 4;
     const totalColumnCount = fixedColumnCount + yearColumnCount;
 
     let tableFontSize = 14;
     let cellPadding = '10px 5px';
-    if (totalColumnCount > 16) {
-        tableFontSize = 10;
-        cellPadding = '6px 3px';
-    } else if (totalColumnCount > 12) {
-        tableFontSize = 11;
-        cellPadding = '7px 4px';
-    } else if (totalColumnCount > 9) {
-        tableFontSize = 12;
-        cellPadding = '8px 4px';
-    }
+    if (totalColumnCount > 16) { tableFontSize = 10; cellPadding = '6px 3px'; }
+    else if (totalColumnCount > 12) { tableFontSize = 11; cellPadding = '7px 4px'; }
+    else if (totalColumnCount > 9) { tableFontSize = 12; cellPadding = '8px 4px'; }
 
     let html = `
     <html dir="rtl" lang="ar">
@@ -50,46 +37,23 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
             .report-header h3 { margin: 0; font-size: 20px; font-weight: 800; }
             .report-header h2 { margin: 15px 0 10px 0; font-size: 24px; font-weight: 800; }
             .report-header p { margin: 0; font-size: 15px; }
-
             table { width: 100%; table-layout: auto; border-collapse: collapse; margin-top: 10px; font-size: ${tableFontSize}px; text-align: center; }
             th, td { border: 2px solid #000; padding: ${cellPadding}; }
             th { font-weight: 800; background-color: #fff; }
             td.name-col { text-align: right; padding-right: 15px; font-weight: 700; }
             td { font-weight: 700; }
-
             .signatures { margin-top: 70px; display: flex; justify-content: space-between; text-align: center; padding: 0 20px; }
             .sig-block { flex: 1; display: flex; flex-direction: column; align-items: center; }
             .sig-role { margin: 0 0 45px 0; font-size: 14px; font-weight: 800; }
             .sig-space { width: 75%; height: 1px; border-bottom: 1.5px solid #000; margin-bottom: 8px; }
             .sig-title { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.3px; }
-
             .footer-note { margin-top: 50px; font-size: 12px; color: #333; text-align: right; font-weight: 500; }
-
             @media print {
                 @page { size: A4 landscape; margin: 10mm; }
-                body {
-                    -webkit-print-color-adjust: exact;
-                    print-color-adjust: exact;
-                    width: 100%;
-                    padding: 0;
-                    box-sizing: border-box !important;
-                }
+                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100%; padding: 0; box-sizing: border-box !important; }
                 .no-print { display: none; }
-
-                /* ===== Table container: prevent side-bleed ===== */
-                table {
-                    box-sizing: border-box !important;
-                    border-collapse: collapse !important;
-                    width: 98% !important;
-                    margin: 0 auto !important;
-                    border: 2px solid #000 !important;
-                }
-                th, td {
-                    border: 1px solid #000 !important;
-                    padding: 8px !important;
-                }
-                /* Keep table rows and the signatures block intact so a row or
-                   the signatures never break alone onto an empty trailing page. */
+                table { box-sizing: border-box !important; border-collapse: collapse !important; width: 98% !important; margin: 0 auto !important; border: 2px solid #000 !important; }
+                th, td { border: 1px solid #000 !important; padding: 8px !important; }
                 tr { page-break-inside: avoid !important; }
                 thead { display: table-header-group; }
                 .signatures { page-break-inside: avoid !important; }
@@ -121,25 +85,23 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
     `;
 
     if (isAllYears) {
-        // Every financial year is a self-contained 4-column block: its own
-        // opening balance (= the previous year's closing balance) followed by
-        // added/deducted/closing, so no column needs to be read against a
-        // separate leading column further left in the table.
         years.forEach((year) => {
+            const addedLabel = year === realLibyaYear ? accrualLabel : `مضاف ${year}`;
             html += `
                 <th style="white-space: nowrap; line-height: 1.3; padding: 8px 7px;">
                     (الصافي التراكمي للسنوات السابقة)<br>
                     <span style="font-size: 0.75em; font-weight: 600;">حتى تاريخ 31/12/${year - 1}</span>
                 </th>
-                <th>مضاف ${year}</th>
+                <th>${addedLabel}</th>
                 <th>مخصوم ${year}</th>
                 <th>الصافي التراكمي ${year}</th>
             `;
         });
     } else {
+        const addedLabel = selectedYear === realLibyaYear ? accrualLabel : `مضاف ${selectedYear}`;
         html += `
             <th>${carriedLabel}</th>
-            <th>مضاف ${selectedYear}</th>
+            <th>${addedLabel}</th>
             <th>مخصوم ${selectedYear}</th>
             <th>الصافي التراكمي ${selectedYear}</th>
         `;
@@ -162,12 +124,10 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
         if (isAllYears) {
             const ledger = computeYearlyLedger(emp, years);
             ledger.forEach((row) => {
-                html += `
-                    <td>${row.opening === 0 ? '0' : row.opening}</td>
+                html += `<td>${row.opening === 0 ? '0' : row.opening}</td>
                     <td>${row.added === 0 ? '-' : row.added}</td>
                     <td>${row.deducted === 0 ? '-' : row.deducted}</td>
-                    <td>${row.closing}</td>
-                `;
+                    <td>${row.closing}</td>`;
             });
         } else {
             let carriedForSelectedYear = initialCarried;
@@ -175,17 +135,14 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
                 if (y === selectedYear) break;
                 carriedForSelectedYear += (parseFloat(emp.years_data[y]?.added) || 0) - (parseFloat(emp.years_data[y]?.deducted) || 0);
             }
-
             const added = parseFloat(emp.years_data[selectedYear]?.added) || 0;
             const deducted = parseFloat(emp.years_data[selectedYear]?.deducted) || 0;
             const net = carriedForSelectedYear + added - deducted;
 
-            html += `
-                <td>${carriedForSelectedYear === 0 ? '0' : carriedForSelectedYear}</td>
+            html += `<td>${carriedForSelectedYear === 0 ? '0' : carriedForSelectedYear}</td>
                 <td>${added === 0 ? '-' : added}</td>
                 <td>${deducted === 0 ? '-' : deducted}</td>
-                <td>${net}</td>
-            `;
+                <td>${net}</td>`;
         }
 
         html += `</tr>`;
@@ -196,33 +153,16 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
         </table>
 
         <div class="signatures">
-            <div class="sig-block">
-                <p class="sig-role">إعداد</p>
-                <div class="sig-space"></div>
-                <p class="sig-title">رئيس وحدة شؤون الموظفين</p>
-            </div>
-            <div class="sig-block">
-                <p class="sig-role">&nbsp;</p>
-                <div class="sig-space"></div>
-                <p class="sig-title">رئيس قسم الشؤون الإدارية</p>
-            </div>
-            <div class="sig-block">
-                <p class="sig-role">اعتماد</p>
-                <div class="sig-space"></div>
-                <p class="sig-title">مدير مكتب أوقاف القره بوللي</p>
-            </div>
+            <div class="sig-block"><p class="sig-role">إعداد</p><div class="sig-space"></div><p class="sig-title">رئيس وحدة شؤون الموظفين</p></div>
+            <div class="sig-block"><p class="sig-role">&nbsp;</p><div class="sig-space"></div><p class="sig-title">رئيس قسم الشؤون الإدارية</p></div>
+            <div class="sig-block"><p class="sig-role">اعتماد</p><div class="sig-space"></div><p class="sig-title">مدير مكتب أوقاف القره بوللي</p></div>
         </div>
 
-        <div class="footer-note">
-            تم انشاء هذا التقرير بواسطة منظومة الإجازات
-        </div>
+        <div class="footer-note">تم انشاء هذا التقرير بواسطة منظومة الإجازات</div>
 
-        <script>
-            window.onload = function() { setTimeout(function(){ window.print(); }, 500); }
-        <\/script>
+        <script>window.onload = function() { setTimeout(function(){ window.print(); }, 500); }<\/script>
     </body>
-    </html>
-    `;
+    </html>`;
 
     printWindow.document.write(html);
     printWindow.document.close();

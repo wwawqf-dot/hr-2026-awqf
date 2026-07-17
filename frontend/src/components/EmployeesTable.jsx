@@ -1,12 +1,12 @@
 import { Fragment, useMemo } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
-import { computeYearlyLedger } from '../utils/leaveCalc';
+import { computeYearlyLedger, computeFifoAudit } from '../utils/leaveCalc';
+import { getAccrualLabel, getAccruedDays } from '../utils/libyaTime';
 
 export default function EmployeesTable({ employees, years, onDeduct, onEdit, onDelete }) {
     const { canDeduct, canEdit, canDelete } = usePermissions();
+    const realLibyaYear = new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date());
 
-    // Memoized sort: only re-sort when the employees array identity changes
-    // (i.e., after a mutation, not on every keystroke in the search bar).
     const sortedEmployees = useMemo(
         () => [...employees].sort((a, b) => (a.is_frozen ? 1 : 0) - (b.is_frozen ? 1 : 0)),
         [employees]
@@ -20,22 +20,21 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
         );
     }
 
+    const accrualLabel = getAccrualLabel();
+
     return (
-        <div className="table-container">
+        <div className="table-container compact-table">
             <table>
                 <thead>
                     <tr>
-                        <th rowSpan={2} style={{ textAlign: 'center', width: 50 }}>ت</th>
-                        <th rowSpan={2} style={{ textAlign: 'center', minWidth: 110 }}>الرقم الوظيفي</th>
-                        <th rowSpan={2} style={{ minWidth: 250 }}>الإسم الكامل</th>
+                        <th rowSpan={2} style={{ textAlign: 'center', width: 40 }}>ت</th>
+                        <th rowSpan={2} style={{ minWidth: 140 }}>الإسم الكامل</th>
                         <th rowSpan={2}>الرقم الوطني</th>
                         <th rowSpan={2}>الصفة الوظيفية</th>
                         {years.map((year) => (
                             <th key={year} colSpan={4} className="year-group-header">سنة {year}</th>
                         ))}
-                        <th rowSpan={2} className="actions-col" style={{ textAlign: 'center', minWidth: 150 }}>
-                            الإجراءات
-                        </th>
+                        <th rowSpan={2} className="actions-col" style={{ textAlign: 'center', minWidth: 110 }}>الإجراءات</th>
                     </tr>
                     <tr>
                         {years.map((year) => (
@@ -44,7 +43,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                                     (الصافي التراكمي للسنوات السابقة)
                                     <span className="header-sub">حتى تاريخ 31/12/{year - 1}</span>
                                 </th>
-                                <th className="year-col-header">مضاف {year}</th>
+                                <th className="year-col-header">{year === Number(realLibyaYear) ? accrualLabel : `مضاف ${year}`}</th>
                                 <th className="year-col-header">مخصوم {year}</th>
                                 <th className="year-col-header">الصافي التراكمي {year}</th>
                             </Fragment>
@@ -54,107 +53,69 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                 <tbody>
                     {sortedEmployees.map((emp, index) => {
                         const ledger = computeYearlyLedger(emp, years);
+                        const monthlyRate = emp.over_45 ? 3.75 : 2.5;
+                        const audit = computeFifoAudit(emp, years, monthlyRate);
                         return (
-                            <tr key={emp.id} style={emp.is_frozen ? { opacity: 0.7 } : undefined}>
-                                <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{index + 1}</td>
-                                <td style={{ textAlign: 'center', color: '#60a5fa', fontWeight: 600 }}>
-                                    {emp.job_number || '-'}
-                                </td>
-                                <td style={{ fontWeight: 600, color: '#ffffff' }}>
-                                    {emp.name}{' '}
-                                    {emp.over_45 && (
-                                        <span
-                                            style={{
-                                                color: '#f59e0b',
-                                                fontSize: '0.75rem',
-                                                background: 'rgba(245,158,11,0.1)',
-                                                padding: '2px 6px',
-                                                borderRadius: 4,
-                                                marginRight: 5,
-                                            }}
-                                        >
-                                            +45 سنة
-                                        </span>
-                                    )}
-                                    {emp.is_frozen && (
-                                        <span
-                                            style={{
-                                                color: '#ef4444',
-                                                fontSize: '0.75rem',
-                                                fontWeight: 700,
-                                                background: 'rgba(239,68,68,0.12)',
-                                                border: '1px solid rgba(239,68,68,0.5)',
-                                                padding: '2px 8px',
-                                                borderRadius: 4,
-                                                marginRight: 5,
-                                            }}
-                                        >
-                                            مُجمّد
-                                        </span>
-                                    )}
-                                </td>
-                                <td style={{ color: 'var(--text-muted)' }}>{emp.national_id || '-'}</td>
-                                <td>{emp.job_title || '-'}</td>
-                                {ledger.map((row) => (
-                                    <Fragment key={row.year}>
-                                        <td style={{ color: '#60a5fa', fontWeight: 'bold', textAlign: 'center' }}>
-                                            {row.opening}
-                                        </td>
-                                        <td style={{ color: '#34d399', textAlign: 'center' }}>{row.added}</td>
-                                        <td style={{ color: 'var(--danger)', textAlign: 'center' }}>{row.deducted}</td>
-                                        <td
-                                            style={{
-                                                color: '#f59e0b',
-                                                fontWeight: 'bold',
-                                                fontSize: '1.05rem',
-                                                textAlign: 'center',
-                                            }}
-                                        >
-                                            {row.closing}
-                                        </td>
-                                    </Fragment>
-                                ))}
-                                <td className="actions-col" style={{ textAlign: 'center' }}>
-                                    <div className="action-buttons">
-                                        {canDeduct && (
-                                            <button
-                                                className="btn btn-primary"
-                                                style={{
-                                                    padding: '0.6rem 1.1rem',
-                                                    fontSize: '1.05rem',
-                                                    fontWeight: 700,
-                                                    transform: 'scale(1.1)',
-                                                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.45)',
-                                                    gap: '0.4rem',
-                                                }}
-                                                onClick={() => onDeduct(emp)}
-                                                title="خصم إجازة"
-                                            >
-                                                <i className="fas fa-minus-circle" style={{ fontSize: '1.2rem' }}></i>
-                                                خصم
-                                            </button>
+                            <Fragment key={emp.id}>
+                                <tr style={emp.is_frozen ? { opacity: 0.6 } : undefined}>
+                                    <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{index + 1}</td>
+                                    <td style={{ fontWeight: 600, color: '#ffffff' }}>
+                                        {emp.name}{' '}
+                                        {emp.over_45 && (
+                                            <span className="tag-warning">+45 سنة</span>
                                         )}
-                                        {canEdit && (
-                                            <button
-                                                className="btn btn-icon btn-warning-outline"
-                                                onClick={() => onEdit(emp)}
-                                                title="تعديل"
-                                            >
-                                                <i className="fas fa-edit"></i>
-                                            </button>
+                                        {emp.is_frozen && (
+                                            <span className="tag-danger">مُجمّد</span>
                                         )}
-                                        {canDelete && (
-                                            <button
-                                                className="btn btn-icon btn-danger-outline"
-                                                onClick={() => onDelete(emp)}
-                                                title="حذف"
-                                            >
-                                                <i className="fas fa-trash"></i>
-                                            </button>
-                                        )}
-                                    </div>
-                                </td>
-                            </tr>
+                                        <div className="emp-job-row">{emp.job_number || '-'}</div>
+                                    </td>
+                                    <td style={{ color: 'var(--text-muted)' }}>{emp.national_id || '-'}</td>
+                                    <td>{emp.job_title || '-'}</td>
+                                    {ledger.map((row) => (
+                                        <Fragment key={row.year}>
+                                            <td className="num-opening">{row.opening}</td>
+                                            <td className="num-added">{row.added}</td>
+                                            <td className="num-deducted">{row.deducted}</td>
+                                            <td className="num-closing">{row.closing}</td>
+                                        </Fragment>
+                                    ))}
+                                    <td className="actions-col" style={{ textAlign: 'center' }}>
+                                        <div className="action-buttons">
+                                            {canDeduct && (
+                                                <button className="btn btn-primary btn-sm" style={{ transform: 'scale(1.05)', boxShadow: '0 3px 10px rgba(16,185,129,0.35)' }}
+                                                    onClick={() => onDeduct(emp)} title="خصم إجازة">
+                                                    <i className="fas fa-minus-circle"></i> خصم
+                                                </button>
+                                            )}
+                                            {canEdit && (
+                                                <button className="btn btn-icon btn-warning-outline" onClick={() => onEdit(emp)} title="تعديل">
+                                                    <i className="fas fa-edit"></i>
+                                                </button>
+                                            )}
+                                            {canDelete && (
+                                                <button className="btn btn-icon btn-danger-outline" onClick={() => onDelete(emp)} title="حذف">
+                                                    <i className="fas fa-trash"></i>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {/* FIFO audit row */}
+                                <tr className="fifo-audit-row" style={emp.is_frozen ? { opacity: 0.6 } : undefined}>
+                                    <td></td>
+                                    <td colSpan={3} className="fifo-audit-cell">
+                                        <span className="fifo-item"><i className="fas fa-arrow-left"></i> الرصيد المرحل: <b>{audit.previousCarryOver}</b></span>
+                                        <span className="fifo-item"><i className="fas fa-calendar-plus"></i> {getAccrualLabel()}: <b>{audit.accruedDays}</b></span>
+                                        <span className="fifo-item"><i className="fas fa-arrow-right"></i> مستهلك من السابقة: <b className="text-warning">{audit.consumedFromPrev}</b></span>
+                                        <span className="fifo-item fifo-highlight">مستهلك من الحالية: <b className="text-danger">{audit.consumedFromCurrent}</b></span>
+                                        <span className="fifo-item"><i className="fas fa-balance-scale"></i> الصافي القانوني: <b className="text-emerald">{audit.legalNet}</b></span>
+                                    </td>
+                                    {years.map((year) => (
+                                        <td key={year} colSpan={4} className="fifo-value-cell"></td>
+                                    ))}
+                                    <td></td>
+                                </tr>
+                            </Fragment>
                         );
                     })}
                 </tbody>

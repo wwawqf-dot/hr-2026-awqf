@@ -6,7 +6,6 @@ const ALL_TABS = [
     { key: 'audit', label: 'سجل النشاطات', icon: 'fa-clipboard-list', roles: ['admin'] },
     { key: 'settings', label: 'أساسيات النظام', icon: 'fa-sliders-h', roles: ['admin'] },
     { key: 'regulations', label: 'اللوائح التنظيمية', icon: 'fa-book', roles: ['admin', 'data_entry', 'viewer'] },
-    { key: 'auditCalc', label: 'التدقيق القانوني', icon: 'fa-scale-balanced', roles: ['admin', 'data_entry', 'viewer'] },
 ];
 
 export default function NavTabs({ view, setView, role }) {
@@ -21,24 +20,14 @@ export default function NavTabs({ view, setView, role }) {
 
     return (
         <div className="nav-tabs-wrap">
-            <button
-                type="button"
-                className="nav-tabs-toggle"
-                onClick={() => setOpen((o) => !o)}
-                aria-expanded={open}
-            >
-                <span>
-                    <i className={`fas ${activeTab?.icon || 'fa-bars'}`}></i> {activeTab?.label || 'القائمة'}
-                </span>
+            <button type="button" className="nav-tabs-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+                <span><i className={`fas ${activeTab?.icon || 'fa-bars'}`}></i> {activeTab?.label || 'القائمة'}</span>
                 <i className={`fas ${open ? 'fa-xmark' : 'fa-bars'}`}></i>
             </button>
             <div className={`nav-tabs${open ? ' nav-tabs-open' : ''}`}>
                 {tabs.map((tab) => (
-                    <button
-                        key={tab.key}
-                        className={`nav-tab${view === tab.key ? ' active' : ''}`}
-                        onClick={() => selectTab(tab.key)}
-                    >
+                    <button key={tab.key} className={`nav-tab${view === tab.key ? ' active' : ''}`}
+                        onClick={() => selectTab(tab.key)}>
                         <i className={`fas ${tab.icon}`}></i> {tab.label}
                     </button>
                 ))}

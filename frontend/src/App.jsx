@@ -7,9 +7,8 @@ import UsersPage from './components/UsersPage';
 import AuditPage from './components/AuditPage';
 import SettingsPage from './components/SettingsPage';
 import Regulations from './components/Regulations';
-import LeaveCalculation from './components/LeaveCalculation';
 
-const PUBLIC_TABS = ['employees', 'regulations', 'auditCalc'];
+const PUBLIC_TABS = ['employees', 'regulations'];
 const ADMIN_TABS = ['users', 'audit', 'settings'];
 
 export default function App() {
@@ -18,17 +17,7 @@ export default function App() {
 
     if (loading) {
         return (
-            <div
-                className="login-screen"
-                style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 24,
-                    minHeight: '100vh',
-                }}
-            >
+            <div className="login-screen" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24, minHeight: '100vh' }}>
                 <div className="skeleton-shimmer" style={{ width: 80, height: 80, borderRadius: 20 }} />
                 <div className="skeleton-shimmer" style={{ width: 200, height: 24 }} />
                 <div className="skeleton-shimmer" style={{ width: 140, height: 16 }} />
@@ -53,12 +42,11 @@ export default function App() {
                 {activeView === 'audit' && isAdmin && <AuditPage />}
                 {activeView === 'settings' && isAdmin && <SettingsPage />}
                 {activeView === 'regulations' && <Regulations />}
-                {activeView === 'auditCalc' && <LeaveCalculation />}
             </div>
             <footer className="footer">
                 منظومة إجازات الموظفين الرقمية - مكتب أوقاف القره بوللي | تصميم وتطوير <span>عبدالرحيم أحمد شيتة</span> &copy; 2026
                 <br />
-                <span style={{ fontSize: '0.85em', opacity: 0.85 }}>النسخة 2.6</span>
+                <span style={{ fontSize: '0.85em', opacity: 0.85 }}>النسخة 2.7</span>
             </footer>
         </div>
     );

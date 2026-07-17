@@ -1,9 +1,6 @@
 import { formatDateDisplay } from './formatDate';
-import { getLibyaTime } from './libyaTime';
+import { getLibyaTime, getAccrualLabel, getAccruedDays } from './libyaTime';
 
-// Computes an employee's current net cumulative balance the same way the
-// main employees table does: initial carried-forward plus, for every tracked
-// year, the added minus the deducted. Order is irrelevant for the total.
 function computeNetCumulative(employee) {
     const initial = parseFloat(employee.initial_carried_forward) || 0;
     return Object.values(employee.years_data || {}).reduce(
@@ -12,19 +9,24 @@ function computeNetCumulative(employee) {
     );
 }
 
-function escapeHtml(value) {
-    return String(value == null ? '' : value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+function computePreviousCarryOver(employee, years) {
+    const currentYear = new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date());
+    let carry = parseFloat(employee.initial_carried_forward) || 0;
+    for (const y of years) {
+        if (Number(y) >= Number(currentYear)) break;
+        const yd = employee.years_data?.[y] || { added: 0, deducted: 0 };
+        carry += (parseFloat(yd.added) || 0) - (parseFloat(yd.deducted) || 0);
+    }
+    return Math.max(0, carry);
 }
 
-// Opens a print-ready A4 (portrait) window with an official detailed leave
-// statement for a SINGLE employee: office header, employee identity block,
-// net cumulative balance, the full deduction history table, and a signatures
-// footer. Mirrors the styling of the annual report (printReport.js).
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export function printEmployeeStatement(employee) {
+    const years = Object.keys(employee.years_data || {}).sort();
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
         alert('يرجى السماح للنوافذ المنبثقة لطباعة كشف الحساب.');
@@ -32,32 +34,25 @@ export function printEmployeeStatement(employee) {
     }
 
     const formattedDate = getLibyaTime().toLocaleDateString('ar-LY', {
-        timeZone: 'Africa/Tripoli',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
+        timeZone: 'Africa/Tripoli', year: 'numeric', month: 'long', day: 'numeric',
     });
     const netCumulative = computeNetCumulative(employee);
+    const prevCarry = computePreviousCarryOver(employee, years);
+    const monthlyRate = employee.over_45 ? 3.75 : 2.5;
+    const accruedLabel = getAccrualLabel();
+    const accruedDays = getAccruedDays(Number(new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date())), monthlyRate);
+    const totalDeducted = Object.values(employee.years_data || {}).reduce((sum, yd) => sum + (parseFloat(yd?.deducted) || 0), 0);
     const history = employee.deductions_history || [];
 
     const rowsHtml = history.length === 0
         ? `<tr><td colspan="5" style="padding: 20px; color: #555; font-weight: 700;">لا توجد خصومات إجازة مسجلة لهذا الموظف.</td></tr>`
-        : history
-              .map((item, index) => {
-                  const isUnknownDate = !item.start;
-                  const datesCells = isUnknownDate
-                      ? `<td colspan="2" style="font-style: italic; color: #444;">خصم بغير تاريخ</td>`
-                      : `<td>${escapeHtml(formatDateDisplay(item.start))}</td>
-                         <td>${escapeHtml(formatDateDisplay(item.end))}</td>`;
-                  return `
-                    <tr>
-                        <td>${escapeHtml(item.year)}</td>
-                        ${datesCells}
-                        <td>${escapeHtml(item.days)}</td>
-                        <td class="note-col">${escapeHtml(item.note || '—')}</td>
-                    </tr>`;
-              })
-              .join('');
+        : history.map((item) => {
+            const isUnknownDate = !item.start;
+            const datesCells = isUnknownDate
+                ? `<td colspan="2" style="font-style: italic; color: #444;">خصم بغير تاريخ</td>`
+                : `<td>${escapeHtml(formatDateDisplay(item.start))}</td><td>${escapeHtml(formatDateDisplay(item.end))}</td>`;
+            return `<tr><td>${escapeHtml(item.year)}</td>${datesCells}<td>${escapeHtml(item.days)}</td><td class="note-col">${escapeHtml(item.note || '—')}</td></tr>`;
+        }).join('');
 
     const html = `
     <html dir="rtl" lang="ar">
@@ -70,58 +65,34 @@ export function printEmployeeStatement(employee) {
             .report-header h3 { margin: 0; font-size: 20px; font-weight: 800; }
             .report-header h2 { margin: 15px 0 10px 0; font-size: 24px; font-weight: 800; }
             .report-header p { margin: 0; font-size: 15px; }
-
-            .employee-details {
-                display: flex; flex-wrap: wrap; gap: 10px 40px;
-                border: 2px solid #000; border-radius: 6px;
-                padding: 16px 22px; margin-top: 20px; font-size: 15px;
-            }
+            .employee-details { display: flex; flex-wrap: wrap; gap: 10px 40px; border: 2px solid #000; border-radius: 6px; padding: 16px 22px; margin-top: 20px; font-size: 15px; }
             .detail-item { flex: 1 1 40%; font-weight: 700; }
             .detail-item .label { font-weight: 800; color: #333; }
-
-            .balance-summary {
-                margin-top: 18px; text-align: center; font-size: 18px; font-weight: 800;
-                border: 2px solid #000; border-radius: 6px; padding: 12px;
-                background-color: #f2f2f2;
-            }
-            .balance-summary .value { font-size: 22px; }
-
+            .summary-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+            .summary-card { flex: 1 1 40%; border: 1.5px solid #000; border-radius: 6px; padding: 10px 14px; text-align: center; font-weight: 700; font-size: 14px; background: #f2f2f2; }
+            .summary-card .val { font-size: 20px; display: block; margin-top: 4px; }
+            .summary-card .val.green { color: #059669; }
+            .summary-card .val.red { color: #dc2626; }
+            .summary-card .val.blue { color: #2563eb; }
             table { width: 100%; table-layout: auto; border-collapse: collapse; margin-top: 20px; font-size: 14px; text-align: center; }
             th, td { border: 2px solid #000; padding: 10px 5px; }
             th { font-weight: 800; background-color: #fff; }
             td { font-weight: 700; }
             td.note-col { text-align: right; padding-right: 12px; }
-
             .signatures { margin-top: 70px; display: flex; justify-content: space-between; text-align: center; padding: 0 20px; }
             .sig-block { flex: 1; display: flex; flex-direction: column; align-items: center; }
             .sig-role { margin: 0 0 45px 0; font-size: 14px; font-weight: 800; }
             .sig-space { width: 75%; height: 1px; border-bottom: 1.5px solid #000; margin-bottom: 8px; }
             .sig-title { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.3px; }
-
             .footer-note { margin-top: 50px; font-size: 12px; color: #333; text-align: right; font-weight: 500; }
-
-            .statement-note {
-                margin-top: 22px; padding: 12px 16px;
-                border: 1.5px solid #000; border-radius: 6px;
-                font-size: 13px; font-weight: 700; line-height: 1.9;
-                text-align: right; background-color: #f7f7f7;
-            }
-
+            .statement-note { margin-top: 22px; padding: 12px 16px; border: 1.5px solid #000; border-radius: 6px; font-size: 13px; font-weight: 700; line-height: 1.9; text-align: right; background-color: #f7f7f7; }
             @media print {
                 @page { margin: 12mm; size: A4 portrait; }
                 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 0; }
                 .no-print { display: none; }
-                table {
-                    box-sizing: border-box !important;
-                    border-collapse: collapse !important;
-                    width: 98% !important;
-                    margin: 0 auto !important;
-                    border: 2px solid #000 !important;
-                }
-                th, td {
-                    border: 1px solid #000 !important;
-                    padding: 8px !important;
-                }
+                .print-hide { display: none !important; }
+                table { box-sizing: border-box !important; border-collapse: collapse !important; width: 98% !important; margin: 0 auto !important; border: 2px solid #000 !important; }
+                th, td { border: 1px solid #000 !important; padding: 8px !important; }
             }
         </style>
     </head>
@@ -146,57 +117,44 @@ export function printEmployeeStatement(employee) {
             <div class="detail-item"><span class="label">الرقم الوطني:</span> ${escapeHtml(employee.national_id || '-')}</div>
         </div>
 
-        <div class="balance-summary">
-            الصافي التراكمي الحالي للرصيد: <span class="value">${netCumulative}</span> يوماً
+        <!-- Summary-only cards -->
+        <div class="summary-grid">
+            <div class="summary-card">الرصيد المرحّل من السنوات السابقة<span class="val blue">${prevCarry}</span></div>
+            <div class="summary-card">${accruedLabel}<span class="val green">${accruedDays}</span></div>
+            <div class="summary-card">إجمالي المخصوم<span class="val red">${totalDeducted}</span></div>
+            <div class="summary-card">الصافي التراكمي الحالي<span class="val green">${netCumulative}</span></div>
         </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th style="width: 70px;">السنة</th>
-                    <th>من تاريخ</th>
-                    <th>إلى تاريخ</th>
-                    <th style="width: 110px;">الأيام المخصومة</th>
-                    <th style="min-width: 160px;">الملاحظات</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${rowsHtml}
-            </tbody>
-        </table>
+        <div class="print-hide">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 70px;">السنة</th>
+                        <th>من تاريخ</th>
+                        <th>إلى تاريخ</th>
+                        <th style="width: 110px;">الأيام المخصومة</th>
+                        <th style="min-width: 160px;">الملاحظات</th>
+                    </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+            </table>
 
-        <div class="statement-note">
-            ملاحظة: بدأ العمل بالمنظومة آلياً بتاريخ 13/07/2026. الخصومات السابقة مسجلة كأرصدة مرحلة، وتفاصيلها محفوظة بملف الموظف الورقي.
+            <div class="statement-note">
+                ملاحظة: بدأ العمل بالمنظومة آلياً بتاريخ 13/07/2026. الخصومات السابقة مسجلة كأرصدة مرحلة، وتفاصيلها محفوظة بملف الموظف الورقي.
+            </div>
         </div>
 
         <div class="signatures">
-            <div class="sig-block">
-                <p class="sig-role">إعداد</p>
-                <div class="sig-space"></div>
-                <p class="sig-title">وحدة شؤون الموظفين</p>
-            </div>
-            <div class="sig-block">
-                <p class="sig-role">مراجعة</p>
-                <div class="sig-space"></div>
-                <p class="sig-title">رئيس قسم الشؤون الإدارية</p>
-            </div>
-            <div class="sig-block">
-                <p class="sig-role">اعتماد</p>
-                <div class="sig-space"></div>
-                <p class="sig-title">مدير مكتب أوقاف القره بوللي</p>
-            </div>
+            <div class="sig-block"><p class="sig-role">إعداد</p><div class="sig-space"></div><p class="sig-title">وحدة شؤون الموظفين</p></div>
+            <div class="sig-block"><p class="sig-role">مراجعة</p><div class="sig-space"></div><p class="sig-title">رئيس قسم الشؤون الإدارية</p></div>
+            <div class="sig-block"><p class="sig-role">اعتماد</p><div class="sig-space"></div><p class="sig-title">مدير مكتب أوقاف القره بوللي</p></div>
         </div>
 
-        <div class="footer-note">
-            تم انشاء هذا الكشف بواسطة منظومة الإجازات
-        </div>
+        <div class="footer-note">تم انشاء هذا الكشف بواسطة منظومة الإجازات</div>
 
-        <script>
-            window.onload = function() { setTimeout(function(){ window.print(); }, 500); }
-        <\/script>
+        <script>window.onload = function() { setTimeout(function(){ window.print(); }, 500); }<\/script>
     </body>
-    </html>
-    `;
+    </html>`;
 
     printWindow.document.write(html);
     printWindow.document.close();

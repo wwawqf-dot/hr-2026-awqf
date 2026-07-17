@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { calculateDeductionDays } from '../../utils/deductionDays';
-import { getLibyaDateStr } from '../../utils/libyaTime';
+import { getLibyaDateStr, getAccrualLabel } from '../../utils/libyaTime';
+import { computeFifoAudit } from '../../utils/leaveCalc';
 import CustomConfirmModal from './CustomConfirmModal';
 
 const RETRO_LIMIT_DAYS = 40;
@@ -24,7 +25,6 @@ function daysBetween(fromStr, toStr) {
     return Math.round((to - from) / 86400000);
 }
 
-// Current net cumulative balance = initial carried-forward + Σ(added - deducted).
 function computeNetBalance(employee) {
     const initial = parseFloat(employee.initial_carried_forward) || 0;
     return Object.values(employee.years_data || {}).reduce(
@@ -45,13 +45,13 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
     const [pendingDeleteId, setPendingDeleteId] = useState(null);
     const [deleting, setDeleting] = useState(false);
 
+    const years = Object.keys(employee.years_data || {}).sort();
+    const monthlyRate = employee.over_45 ? 3.75 : 2.5;
+    const fifo = useMemo(() => computeFifoAudit(employee, years, monthlyRate), [employee, years, monthlyRate]);
+
     useEffect(() => {
-        setStart('');
-        setEnd('');
-        setHolidays(0);
-        setUnknownDays('');
-        setNote('');
-        setError('');
+        setStart(''); setEnd(''); setHolidays(0);
+        setUnknownDays(''); setNote(''); setError('');
     }, [employee.id]);
 
     const isHafiz = employee.job_title === 'محفظ' || employee.job_title === 'محفظة';
@@ -59,13 +59,19 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
     const hasDates = Boolean(start || end);
     const days = hasUnknownDays ? Number(unknownDays) : calculateDeductionDays(start, end, holidays, employee.job_title);
 
-    // Live validation, recomputed on every keystroke, so the submit button
-    // disables BEFORE the user tries to save. The submit-time checks below
-    // (and the un-bypassable server-side checks) remain as backstops.
     const netBalance = computeNetBalance(employee);
     const retroDaysLive = !hasUnknownDays && start ? daysBetween(start, localTodayStr()) : null;
     const retroBlocked = retroDaysLive !== null && retroDaysLive > RETRO_LIMIT_DAYS;
     const balanceBlocked = days > 0 && days > netBalance;
+
+    // FIFO split preview for this deduction
+    const fifoPreview = useMemo(() => {
+        if (days <= 0) return null;
+        const fromPrev = Math.min(fifo.previousCarryOver, days);
+        const fromCurrent = days - fromPrev;
+        return { fromPrev, fromCurrent };
+    }, [days, fifo.previousCarryOver]);
+
     const liveBlockMessage = balanceBlocked
         ? `الرصيد المتاح (${netBalance} يوم) غير كافٍ لتغطية الخصم المطلوب (${days} يوم).`
         : retroBlocked
@@ -81,8 +87,6 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
             return;
         }
 
-        // 40-day retroactive limit — dated deductions only, measured against the
-        // real auto-advancing clock. The "unknown dates" path bypasses this.
         if (!hasUnknownDays && start) {
             const retroDays = daysBetween(start, localTodayStr());
             if (retroDays !== null && retroDays > RETRO_LIMIT_DAYS) {
@@ -91,7 +95,6 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
             }
         }
 
-        // Insufficient-balance protection — applies to both paths.
         if (days > computeNetBalance(employee)) {
             setError('فشلت العملية: رصيد الموظف الحالي غير كافٍ لتغطية عدد أيام الخصم المطلوبة.');
             return;
@@ -105,11 +108,8 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
             } else {
                 await onSubmit(employee.id, { start, end, customHolidays: Number(holidays) || 0, note: noteVal });
             }
-            setStart('');
-            setEnd('');
-            setHolidays(0);
-            setUnknownDays('');
-            setNote('');
+            setStart(''); setEnd(''); setHolidays(0);
+            setUnknownDays(''); setNote('');
         } catch (err) {
             setError(err.message || 'حدث خطأ أثناء تسجيل الخصم');
         } finally {
@@ -139,9 +139,16 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
                     <h3 className="modal-title">تسجيل خصم إجازة</h3>
                     <button className="close-modal" onClick={onClose}>&times;</button>
                 </div>
-                <p style={{ marginBottom: '1.2rem', color: '#60a5fa', fontWeight: 'bold', fontSize: '1.1rem' }}>
-                    الموظف: {employee.name}
+                <p style={{ marginBottom: '0.8rem', color: '#60a5fa', fontWeight: 'bold', fontSize: '1.05rem' }}>
+                    الموظف: {employee.name} <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.85rem' }}>({employee.job_number || '-'})</span>
                 </p>
+
+                {/* FIFO balance summary */}
+                <div className="fifo-balance-bar">
+                    <span><i className="fas fa-arrow-left"></i> المرحّل: <b>{fifo.previousCarryOver}</b></span>
+                    <span><i className="fas fa-calendar-plus"></i> {getAccrualLabel()}: <b>{fifo.accruedDays}</b></span>
+                    <span><i className="fas fa-chart-simple"></i> الإجمالي: <b className="text-emerald">{netBalance}</b></span>
+                </div>
 
                 {error && <div className="form-error">{error}</div>}
 
@@ -149,76 +156,44 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
                     <div className="date-range-row">
                         <div className="form-group" style={{ flex: 1 }}>
                             <label>من تاريخ</label>
-                            <input
-                                type="date"
-                                value={start}
-                                disabled={hasUnknownDays}
-                                onChange={(e) => setStart(e.target.value)}
-                            />
+                            <input type="date" value={start} disabled={hasUnknownDays} onChange={(e) => setStart(e.target.value)} />
                         </div>
                         <div className="form-group" style={{ flex: 1 }}>
                             <label>إلى تاريخ</label>
-                            <input
-                                type="date"
-                                value={end}
-                                disabled={hasUnknownDays}
-                                onChange={(e) => setEnd(e.target.value)}
-                            />
+                            <input type="date" value={end} disabled={hasUnknownDays} onChange={(e) => setEnd(e.target.value)} />
                         </div>
                     </div>
                     <div className="form-group">
                         <label>عطلات رسمية تقع في هذه الفترة لاستبعادها (أيام)</label>
-                        <input
-                            type="number"
-                            min="0"
-                            value={holidays}
-                            disabled={hasUnknownDays}
-                            onChange={(e) => setHolidays(e.target.value)}
-                        />
+                        <input type="number" min="0" value={holidays} disabled={hasUnknownDays} onChange={(e) => setHolidays(e.target.value)} />
                     </div>
                     <div className="calculated-days">
                         <div>
                             <div style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>صافي الخصم المحتسب:</div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                {hasUnknownDays
-                                    ? '(عدد أيام مُدخل يدوياً بدون تاريخ)'
-                                    : `(تلقائياً بدون ${isHafiz ? 'الخميس والجمعة' : 'الجمعة والسبت'} والمستبعدة)`}
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                {hasUnknownDays ? '(عدد أيام مُدخل يدوياً بدون تاريخ)' : `(تلقائياً بدون ${isHafiz ? 'الخميس والجمعة' : 'الجمعة والسبت'} والمستبعدة)`}
                             </div>
                         </div>
                         <span>{days || 0}</span>
                     </div>
 
-                    <div
-                        style={{
-                            background: 'rgba(96, 165, 250, 0.05)',
-                            padding: '0.9rem 1rem',
-                            borderRadius: 8,
-                            border: '1px dashed rgba(96, 165, 250, 0.35)',
-                            marginBottom: '1.25rem',
-                        }}
-                    >
-                        <label style={{ display: 'block', marginBottom: '0.5rem', color: '#60a5fa', fontWeight: 600 }}>
-                            خصم إجازات غير معروفة التواريخ
-                        </label>
-                        <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            placeholder="عدد الأيام (بدلاً من تحديد التواريخ أعلاه)"
-                            value={unknownDays}
-                            disabled={hasDates}
-                            onChange={(e) => setUnknownDays(e.target.value)}
-                        />
-                    </div>
+                    {/* FIFO split preview */}
+                    {fifoPreview && days > 0 && days <= netBalance && (
+                        <div className="fifo-split-preview">
+                            <div className="fifo-split-item">
+                                <span className="fifo-split-label">يُخصم من الرصيد المرحّل:</span>
+                                <span className="fifo-split-value">{fifoPreview.fromPrev} يوم</span>
+                            </div>
+                            <div className="fifo-split-item">
+                                <span className="fifo-split-label">يُخصم من رصيد السنة الحالية ({getAccrualLabel()}):</span>
+                                <span className="fifo-split-value">{fifoPreview.fromCurrent} يوم</span>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="form-group">
                         <label>البيان / ملاحظات الخصم</label>
-                        <input
-                            type="text"
-                            placeholder="اختياري - مثال: إجازة مرضية، إجازة طارئة..."
-                            value={note}
-                            onChange={(e) => setNote(e.target.value)}
-                        />
+                        <input type="text" placeholder="اختياري - مثال: إجازة مرضية، إجازة طارئة..." value={note} onChange={(e) => setNote(e.target.value)} />
                     </div>
 
                     {liveBlockMessage && (
@@ -228,12 +203,8 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
                         </div>
                     )}
 
-                    <button
-                        type="submit"
-                        className="btn btn-primary"
-                        style={{ width: '100%', justifyContent: 'center' }}
-                        disabled={saving || balanceBlocked || retroBlocked}
-                    >
+                    <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}
+                        disabled={saving || balanceBlocked || retroBlocked}>
                         {saving ? 'جاري الحفظ...' : 'اعتماد الخصم'}
                     </button>
                 </form>
@@ -259,37 +230,21 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
                                     const isUnknownDate = !item.start;
                                     return (
                                         <tr key={item.id}>
-                                            <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#f59e0b' }}>
-                                                {item.year}
-                                            </td>
+                                            <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#f59e0b' }}>{item.year}</td>
                                             {isUnknownDate ? (
-                                                <td
-                                                    colSpan={2}
-                                                    style={{ textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}
-                                                >
-                                                    خصم بغير تاريخ
-                                                </td>
+                                                <td colSpan={2} style={{ textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>خصم بغير تاريخ</td>
                                             ) : (
                                                 <>
                                                     <td style={{ textAlign: 'center' }}>{item.start}</td>
                                                     <td style={{ textAlign: 'center' }}>{item.end}</td>
                                                 </>
                                             )}
-                                            <td style={{ textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>
-                                                {item.days} أيام
-                                            </td>
-                                            <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                                                {item.note || '—'}
-                                            </td>
+                                            <td style={{ textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>{item.days} أيام</td>
+                                            <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>{item.note || '—'}</td>
                                             <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                                                 {isAdmin && (
-                                                    <button
-                                                        type="button"
-                                                        className="btn btn-danger-outline"
-                                                        style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
-                                                        onClick={() => setPendingDeleteId(item.id)}
-                                                        title="حذف الخصم"
-                                                    >
+                                                    <button type="button" className="btn btn-danger-outline" style={{ padding: '0.25rem 0.45rem', fontSize: '0.72rem' }}
+                                                        onClick={() => setPendingDeleteId(item.id)} title="حذف الخصم">
                                                         <i className="fas fa-trash"></i>
                                                     </button>
                                                 )}
@@ -307,11 +262,8 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
                 <CustomConfirmModal
                     title="حذف خصم من السجل"
                     message="هل أنت متأكد من حذف هذا الخصم من السجل؟ سيتم إعادة الأيام إلى رصيد الموظف. لا يمكن التراجع عن هذا الإجراء."
-                    confirmLabel="نعم، متأكد"
-                    cancelLabel="إلغاء"
-                    busy={deleting}
-                    onConfirm={confirmDeleteHistoryItem}
-                    onCancel={() => setPendingDeleteId(null)}
+                    confirmLabel="نعم، متأكد" cancelLabel="إلغاء" busy={deleting}
+                    onConfirm={confirmDeleteHistoryItem} onCancel={() => setPendingDeleteId(null)}
                 />
             )}
         </div>
