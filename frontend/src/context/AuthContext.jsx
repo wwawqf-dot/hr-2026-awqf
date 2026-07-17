@@ -73,10 +73,27 @@ export function AuthProvider({ children }) {
             password,
         });
         if (error) throw new ApiError(mapAuthError(error.message), 400);
-        const profile = await loadProfile(data.user);
-        setUser(profile);
+
+        const { data: profile, error: profileErr } = await supabase
+            .from('profiles')
+            .select('username, role')
+            .eq('id', data.user.id)
+            .single();
+
+        if (profileErr || !profile) {
+            await supabase.auth.signOut();
+            throw new ApiError('لم يتم العثور على صلاحية للمستخدم', 403);
+        }
+
+        const enriched = {
+            id: data.user.id,
+            email: data.user.email,
+            username: profile.username || data.user.email,
+            role: profile.role,
+        };
+        setUser(enriched);
         setLoading(false);
-        return profile;
+        return enriched;
     }, []);
 
     const logout = useCallback(async () => {

@@ -51,10 +51,11 @@ export default function RegistrationPortal() {
             if (error) throw error;
             if (!data?.user) throw new Error('تعذر إنشاء الحساب');
 
-            setSuccess(`تم إنشاء الحساب بنجاح!
-يمكنك الآن تسجيل الدخول باستخدام بريدك الإلكتروني وكلمة المرور.
-`);
-            setTimeout(() => navigate('/'), 2000);
+            await supabase.auth.signOut();
+            localStorage.clear();
+
+            setSuccess('تم إنشاء الحساب بنجاح. يرجى تسجيل الدخول الآن.');
+            setTimeout(() => navigate('/'), 1500);
         } catch (err) {
             setRegError(err.message || 'تعذر إنشاء الحساب');
         } finally {
