@@ -106,29 +106,61 @@ export default function UsersPage() {
 
             {/* Supabase Dashboard Link */}
             <div className="panel" style={{
-                maxWidth: 680, margin: '0 auto 24px', padding: '1.5rem 2rem', borderRadius: 16,
-                display: 'flex', alignItems: 'center', gap: 16,
+                maxWidth: 720, margin: '0 auto 24px', padding: '1.8rem 2.2rem', borderRadius: 16,
             }}>
-                <div style={{
-                    width: 48, height: 48, borderRadius: 14,
-                    background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.2)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                }}>
-                    <i className="fas fa-database" style={{ color: '#60a5fa', fontSize: 20 }}></i>
-                </div>
-                <div style={{ flex: 1 }}>
-                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>إدارة المستخدمين عبر Supabase</h3>
-                    <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                        يتم إنشاء المستخدمين وحذفهم من لوحة Supabase Dashboard. الصلاحيات الافتراضية للمستخدم الجديد هي <strong>متابع</strong>، ويمكنك تعديلها من الجدول أدناه.
-                    </p>
-                </div>
-                <a href="https://supabase.com/dashboard/project/uzmhsesmszngkanjsjgy/auth/users" target="_blank" rel="noopener noreferrer"
-                    className="btn btn-primary" style={{
-                        minHeight: 44, whiteSpace: 'nowrap', justifyContent: 'center', borderRadius: 10,
-                        background: 'linear-gradient(135deg, #3b82f6, #2563eb)', fontSize: '0.88rem',
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
+                    <div style={{
+                        width: 48, height: 48, borderRadius: 14, flexShrink: 0,
+                        background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.2)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                    <i className="fas fa-external-link-alt"></i> إضافة مستخدم جديد
-                </a>
+                        <i className="fas fa-database" style={{ color: '#60a5fa', fontSize: 20 }}></i>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>إضافة مستخدم جديد إلى النظام</h3>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                            يتم إنشاء المستخدمين عبر لوحة Supabase Dashboard. بعد الإنشاء، يمكنك تعديل صلاحية المستخدم من الجدول أدناه.
+                        </p>
+                    </div>
+                    <a href="https://supabase.com/dashboard/project/uzmhsesmszngkanjsjgy/auth/users" target="_blank" rel="noopener noreferrer"
+                        className="btn btn-primary" style={{
+                            minHeight: 44, whiteSpace: 'nowrap', justifyContent: 'center', borderRadius: 10, flexShrink: 0,
+                            background: 'linear-gradient(135deg, #3b82f6, #2563eb)', fontSize: '0.88rem',
+                        }}>
+                        <i className="fas fa-external-link-alt"></i> فتح Supabase
+                    </a>
+                </div>
+
+                <div style={{
+                    background: 'rgba(59,130,246,0.04)', border: '1px solid rgba(59,130,246,0.1)',
+                    borderRadius: 12, padding: '1.2rem 1.5rem',
+                }}>
+                    <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#93c5fd' }}>
+                        <i className="fas fa-list-ol" style={{ marginLeft: 8 }}></i>
+                        خطوات إضافة مستخدم جديد:
+                    </h4>
+                    <ol style={{
+                        margin: '0.8rem 1.5rem 0 0', padding: 0,
+                        fontSize: '0.82rem', lineHeight: 2.2, color: 'var(--text-muted)',
+                    }}>
+                        <li>اضغط على زر <strong style={{ color: '#93c5fd' }}>"فتح Supabase"</strong> أعلاه — ستنتقل إلى لوحة التحكم.</li>
+                        <li>من القائمة الجانبية اليسرى، اختر <strong style={{ color: '#93c5fd' }}>Authentication</strong> ثم <strong style={{ color: '#93c5fd' }}>Users</strong>.</li>
+                        <li>اضغط على <strong style={{ color: '#93c5fd' }}>"Add User"</strong> (أعلى اليمين).</li>
+                        <li>أدخل <strong>البريد الإلكتروني</strong> للمستخدم وكلمة المرور (يمكن للمستخدم تغييرها لاحقاً).</li>
+                        <li>في حقل <strong style={{ color: '#93c5fd' }}>Email Confirm</strong>، تأكد من تشغيل الخيار (✔) ليتم تأكيد البريد تلقائياً.</li>
+                        <li>اضغط <strong style={{ color: '#93c5fd' }}>"Create User"</strong> — سيتم إنشاء الحساب فوراً.</li>
+                        <li>عُد إلى هذه الصفحة — سيظهر المستخدم الجديد في الجدول أدناه بصلاحية <strong>"متابع"</strong>.</li>
+                        <li>لتغيير صلاحيته، اختر الصلاحية المناسبة من القائمة المنسدلة (<strong>متابع / مُدخل بيانات / مدير النظام</strong>).</li>
+                    </ol>
+                </div>
+
+                <div style={{
+                    marginTop: 14, display: 'flex', alignItems: 'center', gap: 10,
+                    fontSize: '0.78rem', color: 'var(--text-muted)',
+                }}>
+                    <i className="fas fa-shield-alt" style={{ color: '#f59e0b' }}></i>
+                    ملاحظة: الصلاحية الافتراضية هي <strong>متابع</strong> (قراءة فقط) حفاظاً على الأمان. يمكنك ترقية الصلاحية بعد الإنشاء.
+                </div>
             </div>
 
             {/* Users List */}
