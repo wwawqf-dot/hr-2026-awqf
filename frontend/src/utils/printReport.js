@@ -1,6 +1,6 @@
-import { formatDateDisplay } from './formatDate';
-import { getLibyaTime, getAccrualLabel } from './libyaTime';
-import { computeYearlyLedger } from './leaveCalc';
+import { formatDateDisplay } from './formatDate.js';
+import { getLibyaTime, getAccrualLabel } from './libyaTime.js';
+import { computeYearlyLedger } from './leaveCalc.js';
 
 export function printReport(selectedYear, years, employees, openingBalanceDate) {
     const isAllYears = selectedYear === 'all';
@@ -121,8 +121,15 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
     );
 
     printableEmployees.forEach((emp, index) => {
+        const isUnpaid = emp.is_unpaid_leave === true;
         const monthlyRate = emp.over_45 ? 3.75 : 2.5;
-        const ledger = computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
+        // Explicit force-zero here too (see EmployeesTable.jsx) — the print
+        // report prepares its own row data independently of the live table,
+        // so it needs its own explicit guard rather than trusting that
+        // whatever computeYearlyLedger does internally is enough.
+        const ledger = isUnpaid
+            ? years.map((year) => ({ year, opening: 0, added: 0, deducted: 0, closing: 0 }))
+            : computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
 
         html += `
             <tr>
@@ -133,19 +140,25 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
                 <td>${emp.job_title || '-'}</td>
         `;
 
+        // Normal employees: a genuinely-zero added/deducted cell prints as
+        // "-" (shorthand for "nothing yet"). An unpaid-leave employee's
+        // zero is a deliberate override, not an absence of data, so it
+        // must print as an unambiguous "0" instead.
+        const cell = (v) => (v === 0 && !isUnpaid ? '-' : v);
+
         if (isAllYears) {
             ledger.forEach((row) => {
                 html += `<td>${row.opening === 0 ? '0' : row.opening}</td>
-                    <td>${row.added === 0 ? '-' : row.added}</td>
-                    <td>${row.deducted === 0 ? '-' : row.deducted}</td>
+                    <td>${cell(row.added)}</td>
+                    <td>${cell(row.deducted)}</td>
                     <td>${row.closing}</td>`;
             });
         } else {
             const row = ledger.find(r => r.year === selectedYear);
             if (row) {
                 html += `<td>${row.opening === 0 ? '0' : row.opening}</td>
-                    <td>${row.added === 0 ? '-' : row.added}</td>
-                    <td>${row.deducted === 0 ? '-' : row.deducted}</td>
+                    <td>${cell(row.added)}</td>
+                    <td>${cell(row.deducted)}</td>
                     <td>${row.closing}</td>`;
             }
         }

@@ -67,7 +67,17 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                 <tbody>
                     {sortedEmployees.map((emp, index) => {
                         const monthlyRate = emp.over_45 ? 3.75 : 2.5;
-                        const enrichedLedger = computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
+                        // Explicit force-zero at the data-prep step for this row:
+                        // computeYearlyLedger already early-returns all-zero rows
+                        // for is_unpaid_leave, but that guard lives one layer
+                        // down inside a shared utility. Re-asserting it here,
+                        // right where the table decides what to render, means
+                        // the zero-out can never silently regress if that
+                        // utility is ever refactored without this call site
+                        // in mind.
+                        const enrichedLedger = emp.is_unpaid_leave === true
+                            ? years.map((year) => ({ year, opening: 0, added: 0, deducted: 0, closing: 0 }))
+                            : computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
 
                         return (
                             <tr key={emp.id} style={emp.is_frozen ? { opacity: 0.6 } : undefined}>

@@ -1,5 +1,5 @@
-import { formatDateDisplay } from './formatDate';
-import { getLibyaTime, getAccrualLabel, getAccruedDays, getLibyaYear } from './libyaTime';
+import { formatDateDisplay } from './formatDate.js';
+import { getLibyaTime, getAccrualLabel, getAccruedDays, getLibyaYear } from './libyaTime.js';
 
 function computeNetCumulative(employee) {
     if (employee.is_unpaid_leave) return 0;
@@ -45,12 +45,19 @@ export function printEmployeeStatement(employee) {
     const formattedDate = getLibyaTime().toLocaleDateString('ar-LY', {
         timeZone: 'Africa/Tripoli', year: 'numeric', month: 'long', day: 'numeric',
     });
+    const isUnpaid = employee.is_unpaid_leave === true;
     const netCumulative = computeNetCumulative(employee);
     const prevCarry = computePreviousCarryOver(employee, years);
     const monthlyRate = employee.over_45 ? 3.75 : 2.5;
     const accruedLabel = getAccrualLabel();
-    const accruedDays = getAccruedDays(Number(getLibyaYear()), monthlyRate, employee.hire_date_current_year);
-    const totalDeducted = Object.values(employee.years_data || {}).reduce((sum, yd) => sum + (parseFloat(yd?.deducted) || 0), 0);
+    // Explicit force-zero for an unpaid-leave employee: computeNetCumulative
+    // and computePreviousCarryOver already guard themselves, but these two
+    // summary figures were computed independently and did NOT check
+    // is_unpaid_leave — so a frozen-at-zero employee's statement still
+    // showed their real accrued days and real total deducted. Force both
+    // to exactly 0 here, at the point they're prepared for the printout.
+    const accruedDays = isUnpaid ? 0 : getAccruedDays(Number(getLibyaYear()), monthlyRate, employee.hire_date_current_year);
+    const totalDeducted = isUnpaid ? 0 : Object.values(employee.years_data || {}).reduce((sum, yd) => sum + (parseFloat(yd?.deducted) || 0), 0);
     const history = employee.deductions_history || [];
 
     const rowsHtml = history.length === 0

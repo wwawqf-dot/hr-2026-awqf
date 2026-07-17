@@ -35,7 +35,17 @@ export function useLeaveData() {
 
     async function updateEmployee(id, payload) {
         const data = await api.updateEmployee(id, payload);
+        // Optimistic merge: swap in the fresh row (including is_unpaid_leave)
+        // immediately, so the table/print components re-render with the
+        // correct zeros on this same tick — no reload needed.
         setEmployees((prev) => prev.map((e) => (e.id === id ? data.employee : e)));
+        // Cache invalidation safety net: re-fetch the full roster in the
+        // background afterward, so the entire cache is guaranteed to match
+        // the database exactly, not just the one row merged above. Fired
+        // without awaiting so it never delays the instant UI update or the
+        // modal closing; a background failure here is non-fatal (the
+        // optimistic merge above already reflects the save).
+        refresh().catch(() => {});
         return data.employee;
     }
 
@@ -47,6 +57,7 @@ export function useLeaveData() {
     async function toggleFreeze(id, includeInPrint) {
         const data = await api.toggleFreeze(id, includeInPrint);
         setEmployees((prev) => prev.map((e) => (e.id === id ? data.employee : e)));
+        refresh().catch(() => {});
         return data.employee;
     }
 
