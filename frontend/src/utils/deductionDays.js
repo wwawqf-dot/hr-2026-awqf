@@ -1,10 +1,10 @@
 // Client-side preview mirror of the backend calculation. The backend is
 // the source of truth and recalculates independently when the deduction
-// is saved. "محفظ"/"محفظة" job titles observe a Thursday+Friday weekend;
-// every other job title uses the standard Friday+Saturday weekend.
-function getWeekendDays(jobTitle) {
-    const isHafiz = jobTitle === 'محفظ' || jobTitle === 'محفظة';
-    return isHafiz ? [4, 5] : [5, 6];
+// is saved.
+// Regular employees (isMemorizer=false): skip Thu(4)+Fri(5).
+// Memorizers (isMemorizer=true): skip Fri(5)+Sat(6).
+function getWeekendDays(isMemorizer) {
+    return isMemorizer ? [5, 6] : [4, 5];
 }
 
 // Parses 'YYYY-MM-DD' as LOCAL midnight (not UTC) so weekday detection and
@@ -19,13 +19,13 @@ function parseLocalDate(str) {
     return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
-export function calculateDeductionDays(startStr, endStr, customHolidays = 0, jobTitle = '') {
+export function calculateDeductionDays(startStr, endStr, customHolidays = 0, isMemorizer = false) {
     if (!startStr || !endStr) return 0;
     const start = parseLocalDate(startStr);
     const end = parseLocalDate(endStr);
     if (!start || !end || end < start) return 0;
 
-    const weekendDays = getWeekendDays(jobTitle);
+    const weekendDays = getWeekendDays(isMemorizer);
 
     let actualDays = 0;
     const current = new Date(start);

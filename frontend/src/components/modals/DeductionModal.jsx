@@ -61,10 +61,10 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
         setUnknownDays(''); setNote(''); setError('');
     }, [employee.id]);
 
-    const isHafiz = employee.job_title === 'محفظ' || employee.job_title === 'محفظة';
+    const isMemorizer = employee.is_memorizer === true;
     const hasUnknownDays = unknownDays !== '' && Number(unknownDays) > 0;
     const hasDates = Boolean(start || end);
-    const days = hasUnknownDays ? Number(unknownDays) : calculateDeductionDays(start, end, holidays, employee.job_title);
+    const days = hasUnknownDays ? Number(unknownDays) : calculateDeductionDays(start, end, holidays, isMemorizer);
 
     const netBalance = computeNetBalance(employee, monthlyRate);
     const retroDaysLive = !hasUnknownDays && start ? daysBetween(start, localTodayStr()) : null;
@@ -190,7 +190,7 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
                         <div>
                             <div style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>صافي الخصم المحتسب:</div>
                             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                {hasUnknownDays ? '(عدد أيام مُدخل يدوياً بدون تاريخ)' : `(تلقائياً بدون ${isHafiz ? 'الخميس والجمعة' : 'الجمعة والسبت'} والمستبعدة)`}
+                                {hasUnknownDays ? '(عدد أيام مُدخل يدوياً بدون تاريخ)' : `(تلقائياً بدون ${isMemorizer ? 'الجمعة والسبت' : 'الخميس والجمعة'} والمستبعدة)`}
                             </div>
                         </div>
                         <span>{days || 0}</span>

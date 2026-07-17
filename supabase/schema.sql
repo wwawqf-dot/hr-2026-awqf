@@ -57,6 +57,7 @@ create table if not exists public.employees (
     carryover_ceiled_at_year  text default null,
     include_in_print        boolean not null default true,
     is_unpaid_leave         boolean not null default false,
+    is_memorizer            boolean not null default false,
     created_at              timestamptz not null default now()
 );
 -- Fast lookups used by the JSON sync bridge (match by job_number).
@@ -197,6 +198,7 @@ as $$
         'is_frozen', e.is_frozen,
         'include_in_print', e.include_in_print,
         'is_unpaid_leave', e.is_unpaid_leave,
+        'is_memorizer', e.is_memorizer,
         'hire_date', coalesce(e.hire_date, ''),
         'hire_date_current_year', e.hire_date_current_year,
         'ceiled_cumulative_balance', e.ceiled_cumulative_balance,
@@ -222,9 +224,10 @@ $$;
 
 -- Weekday day-count, faithful to backend/src/utils/days.js.
 -- Postgres dow: 0=Sun .. 6=Sat (same mapping as JS getDay()).
--- Quran instructors ("محفظ"/"محفظة") observe Thu+Fri; everyone else Fri+Sat.
+-- Regular employees (is_memorizer=false): skip Thu(4)+Fri(5).
+-- Memorizers (is_memorizer=true): skip Fri(5)+Sat(6).
 create or replace function public.calculate_deduction_days(
-    p_start text, p_end text, p_custom_holidays numeric default 0, p_job_title text default ''
+    p_start text, p_end text, p_custom_holidays numeric default 0, p_is_memorizer boolean default false
 ) returns numeric
 language plpgsql
 immutable
@@ -243,8 +246,8 @@ begin
     end;
     if d_end < d_start then return 0; end if;
 
-    if p_job_title in ('محفظ', 'محفظة') then weekend := array[4,5];
-    else weekend := array[5,6]; end if;
+    if p_is_memorizer then weekend := array[5,6];
+    else weekend := array[4,5]; end if;
 
     cur := d_start;
     while cur <= d_end loop
@@ -309,7 +312,7 @@ begin
             raise exception 'لا توجد سنة مالية نشطة مطابقة لتاريخ البداية (%)', v_start_year;
         end if;
         v_year := v_start_year;
-        v_days := public.calculate_deduction_days(p_start, p_end, p_holidays, coalesce(emp.job_title,''));
+        v_days := public.calculate_deduction_days(p_start, p_end, p_holidays, coalesce(emp.is_memorizer, false));
         if v_days <= 0 then
             raise exception 'يجب أن يكون عدد أيام الخصم أكبر من صفر';
         end if;
@@ -440,7 +443,7 @@ begin
                        else v_years[array_length(v_years,1)] end;
 
     insert into public.employees
-        (name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, include_in_print, is_unpaid_leave, hire_date, hire_date_current_year, created_at)
+        (name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, include_in_print, is_unpaid_leave, is_memorizer, hire_date, hire_date_current_year, created_at)
     values (
         v_name,
         trim(coalesce(p_payload->>'job_number','')),
@@ -449,6 +452,7 @@ begin
         v_initial, v_over45, false,
         coalesce((p_payload->>'include_in_print')::boolean, true),
         coalesce((p_payload->>'is_unpaid_leave')::boolean, false),
+        coalesce((p_payload->>'is_memorizer')::boolean, false),
         v_hire, v_hire_current_year, now()
     ) returning id into v_new_id;
 
@@ -527,6 +531,7 @@ begin
         initial_carried_forward = v_initial,
         over_45   = coalesce((p_payload->>'over_45')::boolean, false),
         is_unpaid_leave = coalesce((p_payload->>'is_unpaid_leave')::boolean, false),
+        is_memorizer = coalesce((p_payload->>'is_memorizer')::boolean, false),
         include_in_print = coalesce((p_payload->>'include_in_print')::boolean, true),
         hire_date = v_hire,
         hire_date_current_year = v_hire_current_year
@@ -649,7 +654,7 @@ begin
 
         if v_target is null then
             insert into public.employees
-                (id, name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, include_in_print, is_unpaid_leave, hire_date, hire_date_current_year, created_at)
+                (id, name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, include_in_print, is_unpaid_leave, is_memorizer, hire_date, hire_date_current_year, created_at)
             values (
                 coalesce(nullif(emp->>'id','')::bigint,
                          nextval(pg_get_serial_sequence('public.employees','id'))),
@@ -662,6 +667,7 @@ begin
                 coalesce((emp->>'is_frozen')::boolean, false),
                 coalesce((emp->>'include_in_print')::boolean, true),
                 coalesce((emp->>'is_unpaid_leave')::boolean, false),
+                coalesce((emp->>'is_memorizer')::boolean, false),
                 coalesce(trim(emp->>'hire_date'),''),
                 coalesce(nullif(emp->>'hire_date_current_year',''), null)::date,
                 coalesce((emp->>'createdAt')::timestamptz, now())
@@ -678,6 +684,7 @@ begin
                 is_frozen = coalesce((emp->>'is_frozen')::boolean, is_frozen),
                 include_in_print = coalesce((emp->>'include_in_print')::boolean, include_in_print),
                 is_unpaid_leave = coalesce((emp->>'is_unpaid_leave')::boolean, is_unpaid_leave),
+                is_memorizer = coalesce((emp->>'is_memorizer')::boolean, is_memorizer),
                 hire_date = coalesce(trim(emp->>'hire_date'), hire_date),
                 hire_date_current_year = coalesce(nullif(emp->>'hire_date_current_year',''), hire_date_current_year)::date
             where id = v_target;

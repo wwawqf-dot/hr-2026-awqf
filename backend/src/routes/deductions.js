@@ -116,7 +116,7 @@ router.post('/employees/:id/deductions', requireAuth, (req, res) => {
             });
         }
         yearStr = startYear;
-        days = calculateDeductionDays(start, end, customHolidays, empRow.job_title);
+        days = calculateDeductionDays(start, end, customHolidays, empRow.is_memorizer || false);
         if (days <= 0) {
             return res.status(400).json({ message: 'يجب أن يكون عدد أيام الخصم أكبر من صفر' });
         }

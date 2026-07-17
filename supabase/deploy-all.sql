@@ -239,7 +239,8 @@ alter table public.employees
 -- أعمدة التحكم بالطباعة وإجازة بدون مرتب
 alter table public.employees
     add column if not exists include_in_print boolean not null default true,
-    add column if not exists is_unpaid_leave boolean not null default false;
+    add column if not exists is_unpaid_leave boolean not null default false,
+    add column if not exists is_memorizer boolean not null default false;
 
 create or replace function public.register_deduction(p_employee_id bigint, p_payload jsonb)
 returns jsonb
@@ -281,7 +282,7 @@ begin
             raise exception 'لا توجد سنة مالية نشطة مطابقة لتاريخ البداية (%)', v_start_year;
         end if;
         v_year := v_start_year;
-        v_days := public.calculate_deduction_days(p_start, p_end, p_holidays, coalesce(emp.job_title,''));
+        v_days := public.calculate_deduction_days(p_start, p_end, p_holidays, coalesce(emp.is_memorizer, false));
         if v_days <= 0 then raise exception 'يجب أن يكون عدد أيام الخصم أكبر من صفر'; end if;
         v_retro := ((now() at time zone 'Africa/Tripoli')::date - p_start::date);
         if v_retro > 40 then raise exception 'لا يمكن تسجيل إجازة بتاريخ رجعي يتجاوز 40 يوماً من تاريخ النظام الحالي.'; end if;
@@ -357,7 +358,7 @@ as $$
         'national_id', coalesce(e.national_id, ''), 'job_title', coalesce(e.job_title, ''),
         'initial_carried_forward', e.initial_carried_forward, 'over_45', e.over_45,
         'is_frozen', e.is_frozen, 'include_in_print', e.include_in_print,
-        'is_unpaid_leave', e.is_unpaid_leave, 'hire_date', coalesce(e.hire_date, ''),
+        'is_unpaid_leave', e.is_unpaid_leave, 'is_memorizer', e.is_memorizer, 'hire_date', coalesce(e.hire_date, ''),
         'hire_date_current_year', e.hire_date_current_year,
         'ceiled_cumulative_balance', e.ceiled_cumulative_balance,
         'carryover_ceiled_at_year', e.carryover_ceiled_at_year,

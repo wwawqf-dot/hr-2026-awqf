@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { formatDateDisplay } from '../../utils/formatDate';
 
-const emptyForm = { name: '', job_number: '', national_id: '', job_title: '', initial_carried_forward: 0, over_45: false, hire_date_current_year: '', is_unpaid_leave: false };
+const emptyForm = { name: '', job_number: '', national_id: '', job_title: '', initial_carried_forward: 0, over_45: false, hire_date_current_year: '', is_unpaid_leave: false, is_memorizer: false };
 
 const JOB_TITLES = ['إداري', 'محفظ', 'محفظة', 'موجه', 'مشرفة', 'مشرف', 'متابع', 'خطيب'];
 
@@ -22,6 +22,7 @@ export default function EmployeeFormModal({ mode, employee, years, openingBalanc
                 over_45: employee.over_45 || false,
                 hire_date_current_year: employee.hire_date_current_year || '',
                 is_unpaid_leave: employee.is_unpaid_leave || false,
+                is_memorizer: employee.is_memorizer || false,
             });
             const initial = {};
             years.forEach((y) => {
@@ -66,6 +67,7 @@ export default function EmployeeFormModal({ mode, employee, years, openingBalanc
                 initial_carried_forward: Number(form.initial_carried_forward) || 0,
                 over_45: form.over_45,
                 is_unpaid_leave: form.is_unpaid_leave,
+                is_memorizer: form.is_memorizer,
                 hire_date_current_year: form.hire_date_current_year || null,
                 years_data,
             });
@@ -164,6 +166,18 @@ export default function EmployeeFormModal({ mode, employee, years, openingBalanc
                             onChange={(e) => handleOver45Toggle(e.target.checked)}
                         />
                         <label htmlFor={`over45-${mode}`}>عمر الموظف فوق 50 سنة أو تجاوز 20 سنة من العمل (45 يوماً بدلاً من 30)</label>
+                    </div>
+                    <div className="checkbox-group" style={{ marginTop: '0.5rem' }}>
+                        <input
+                            type="checkbox"
+                            id={`memorizer-${mode}`}
+                            checked={form.is_memorizer}
+                            onChange={(e) => setForm((f) => ({ ...f, is_memorizer: e.target.checked }))}
+                        />
+                        <label htmlFor={`memorizer-${mode}`} style={{ color: '#a78bfa' }}>
+                            <i className="fas fa-book-quran" style={{ marginLeft: 4 }}></i>
+                            تصنيف الموظف: محفظ / محفظة — استثناء الجمعة والسبت من أيام الإجازة
+                        </label>
                     </div>
                     <div className="checkbox-group" style={{ marginTop: '0.5rem' }}>
                         <input

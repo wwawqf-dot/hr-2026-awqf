@@ -48,7 +48,7 @@ begin
             raise exception 'لا توجد سنة مالية نشطة مطابقة لتاريخ البداية (%)', v_start_year;
         end if;
         v_year := v_start_year;
-        v_days := public.calculate_deduction_days(p_start, p_end, p_holidays, coalesce(emp.job_title,''));
+        v_days := public.calculate_deduction_days(p_start, p_end, p_holidays, coalesce(emp.is_memorizer, false));
         if v_days <= 0 then raise exception 'يجب أن يكون عدد أيام الخصم أكبر من صفر'; end if;
         v_retro := ((now() at time zone 'Africa/Tripoli')::date - p_start::date);
         if v_retro > 40 then

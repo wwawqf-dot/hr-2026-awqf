@@ -1,14 +1,10 @@
-// Mirrors the original front-end calculation: counts calendar days between
-// start and end (inclusive), excluding the weekend days that apply to the
-// employee's job title, then subtracts any custom holiday days that fall
-// within the range.
-//
-// "محفظ" / "محفظة" (Quran memorization instructors) observe a Thursday +
-// Friday weekend; every other job title uses the standard Friday +
-// Saturday weekend.
-function getWeekendDays(jobTitle) {
-    const isHafiz = jobTitle === 'محفظ' || jobTitle === 'محفظة';
-    return isHafiz ? [4, 5] : [5, 6];
+// Mirrors the front-end calculation: counts calendar days between
+// start and end (inclusive), excluding the weekend days based on the
+// employee's memorizer status.
+// Regular employees (isMemorizer=false): skip Thu(4)+Fri(5).
+// Memorizers (isMemorizer=true): skip Fri(5)+Sat(6).
+function getWeekendDays(isMemorizer) {
+    return isMemorizer ? [5, 6] : [4, 5];
 }
 
 // Parses a 'YYYY-MM-DD' string into a LOCAL-midnight Date. Using
@@ -25,13 +21,13 @@ function parseLocalDate(str) {
     return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
-function calculateDeductionDays(startStr, endStr, customHolidays = 0, jobTitle = '') {
+function calculateDeductionDays(startStr, endStr, customHolidays = 0, isMemorizer = false) {
     if (!startStr || !endStr) return 0;
     const start = parseLocalDate(startStr);
     const end = parseLocalDate(endStr);
     if (!start || !end || end < start) return 0;
 
-    const weekendDays = getWeekendDays(jobTitle);
+    const weekendDays = getWeekendDays(isMemorizer);
 
     let actualDays = 0;
     const current = new Date(start);
