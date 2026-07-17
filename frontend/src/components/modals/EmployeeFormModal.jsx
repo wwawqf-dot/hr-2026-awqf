@@ -136,7 +136,7 @@ export default function EmployeeFormModal({ mode, employee, years, openingBalanc
                             onChange={(e) => setForm((f) => ({ ...f, hire_date_current_year: e.target.value }))}
                         />
                         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: 2 }}>
-                            اختياري — يُترك فارغاً للموظفين القُدامى. يُستخدم لحساب الرصيد النسبي للمُعيّنين خلال السنة الحالية.
+                            ملاحظة: إذا كانت المباشرة قبل أو في يوم 15 يُحسب رصيد الشهر كاملاً، وإذا كانت بعد يوم 15 لا يُحسب رصيد لهذا الشهر.
                         </span>
                     </div>
 

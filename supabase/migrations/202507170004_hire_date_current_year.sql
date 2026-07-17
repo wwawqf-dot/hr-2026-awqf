@@ -358,7 +358,7 @@ declare
     v_prev_carry numeric; v_fifo_source text;
     v_curr_year text; v_curr_month int;
     v_months numeric; v_monthly_rate numeric; v_dynamic_added numeric;
-    v_hire_date date; v_diff_days int;
+    v_cutoff_month int; v_hire_month int; v_hire_day int;
     p_start text := nullif(p_payload->>'start', '');
     p_end   text := nullif(p_payload->>'end', '');
     p_holidays numeric := coalesce((p_payload->>'customHolidays')::numeric, 0);
@@ -400,8 +400,16 @@ begin
     v_monthly_rate := case when emp.over_45 then 3.75 else 2.5 end;
     if v_year < v_curr_year then v_months := 12;
     elsif emp.hire_date_current_year is not null and v_year = v_curr_year then
-        v_diff_days := (date_trunc('month', now() at time zone 'Africa/Tripoli') - emp.hire_date_current_year::timestamp);
-        v_months := greatest(0, v_diff_days) / 30.0;
+        v_cutoff_month := v_curr_month - 1;
+        v_hire_month := extract(month from emp.hire_date_current_year);
+        v_hire_day := extract(day from emp.hire_date_current_year);
+        if v_hire_month > v_cutoff_month then v_months := 0;
+        else
+            if v_hire_day > 15 then v_hire_month := v_hire_month + 1; end if;
+            if v_hire_month > v_cutoff_month then v_months := 0;
+            else v_months := v_cutoff_month - v_hire_month + 1;
+            end if;
+        end if;
     else v_months := greatest(0, v_curr_month - 1); end if;
     v_dynamic_added := round((v_months * v_monthly_rate)::numeric, 1);
     -- Balance check (include dynamic accrual if row doesn't exist yet)

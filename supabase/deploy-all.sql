@@ -244,6 +244,7 @@ declare
     p_start text := nullif(p_payload->>'start', '');
     p_end   text := nullif(p_payload->>'end', '');
     p_holidays numeric := coalesce((p_payload->>'customHolidays')::numeric, 0);
+    v_cutoff_month int; v_hire_month int; v_hire_day int;
     p_unknown  text := nullif(trim(coalesce(p_payload->>'unknownDays','')), '');
 begin
     if auth.uid() is null then raise exception 'غير مصرح'; end if;
@@ -282,9 +283,16 @@ begin
     v_monthly_rate := case when emp.over_45 then 3.75 else 2.5 end;
     if v_year < v_curr_year then v_months := 12;
     elsif emp.hire_date_current_year is not null and v_year = v_curr_year then
-        -- Prorated: days from hire_date_current_year to end of previous month
-        v_diff_days := (date_trunc('month', now() at time zone 'Africa/Tripoli') - emp.hire_date_current_year::timestamp);
-        v_months := greatest(0, v_diff_days) / 30.0;
+        v_cutoff_month := v_curr_month - 1;
+        v_hire_month := extract(month from emp.hire_date_current_year);
+        v_hire_day := extract(day from emp.hire_date_current_year);
+        if v_hire_month > v_cutoff_month then v_months := 0;
+        else
+            if v_hire_day > 15 then v_hire_month := v_hire_month + 1; end if;
+            if v_hire_month > v_cutoff_month then v_months := 0;
+            else v_months := v_cutoff_month - v_hire_month + 1;
+            end if;
+        end if;
     else v_months := greatest(0, v_curr_month - 1); end if;
     v_dynamic_added := round((v_months * v_monthly_rate)::numeric, 1);
     -- Balance check (include dynamic accrual if row doesn't exist yet)

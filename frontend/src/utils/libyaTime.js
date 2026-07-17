@@ -62,14 +62,16 @@ export function getAccruedDays(year, monthlyRate = 2.5, hireDateCurrentYear = nu
     const targetYear = Number(year);
     const currentYear = Number(getLibyaYear());
     if (hireDateCurrentYear && targetYear === currentYear) {
-        const { year: ly, month } = getLibyaFields();
-        const cutOff = new Date(ly, month - 1, 1);
-        cutOff.setDate(0);
-        const [y, m, d] = hireDateCurrentYear.split('-').map(Number);
-        const hireDate = new Date(y, m - 1, d);
-        const diffDays = Math.round((cutOff - hireDate) / 86400000);
-        if (diffDays <= 0) return 0;
-        return +((diffDays / 30) * monthlyRate).toFixed(1);
+        const { month: currentMonth } = getLibyaFields();
+        const cutoffMonth = currentMonth - 1;
+        const [, hireMonthStr, hireDayStr] = hireDateCurrentYear.split('-');
+        const hireMonth = Number(hireMonthStr);
+        const hireDay = Number(hireDayStr);
+        if (hireMonth > cutoffMonth) return 0;
+        const firstMonth = hireDay > 15 ? hireMonth + 1 : hireMonth;
+        if (firstMonth > cutoffMonth) return 0;
+        const months = cutoffMonth - firstMonth + 1;
+        return +(months * monthlyRate).toFixed(1);
     }
     return +(getAccruedMonths(targetYear) * monthlyRate).toFixed(1);
 }
