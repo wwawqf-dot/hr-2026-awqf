@@ -170,6 +170,8 @@ declare
     v_year text; v_days numeric; v_start text := ''; v_end text := '';
     v_retro int; v_net numeric; v_note text;
     v_prev_carry numeric; v_fifo_source text;
+    v_curr_year text; v_curr_month int;
+    v_months int; v_monthly_rate numeric; v_dynamic_added numeric;
     p_start text := nullif(p_payload->>'start', '');
     p_end   text := nullif(p_payload->>'end', '');
     p_holidays numeric := coalesce((p_payload->>'customHolidays')::numeric, 0);
@@ -205,12 +207,21 @@ begin
     else
         raise exception 'يرجى تحديد تاريخ البداية والنهاية أو عدد أيام الخصم';
     end if;
+    -- Dynamic accrual (no hardcoded 30/45)
+    v_curr_year := extract(year from now() at time zone 'Africa/Tripoli')::text;
+    v_curr_month := extract(month from now() at time zone 'Africa/Tripoli');
+    v_monthly_rate := case when emp.over_45 then 3.75 else 2.5 end;
+    if v_year < v_curr_year then v_months := 12; else v_months := greatest(0, v_curr_month - 1); end if;
+    v_dynamic_added := round((v_months * v_monthly_rate)::numeric, 1);
+    -- Balance check (include dynamic accrual if row doesn't exist yet)
     select coalesce(emp.initial_carried_forward, 0) + coalesce(sum(coalesce(added,0) - coalesce(deducted,0)), 0)
+         + case when not exists (select 1 from public.employee_years where employee_id = emp.id and year = v_year)
+                then v_dynamic_added else 0 end
       into v_net from public.employee_years where employee_id = emp.id;
     if v_days > v_net then
         raise exception 'فشلت العملية: رصيد الموظف الحالي غير كافٍ لتغطية عدد أيام الخصم المطلوبة.';
     end if;
-    -- FIFO source calculation
+    -- FIFO source
     select coalesce(emp.initial_carried_forward, 0) + coalesce(sum(coalesce(added,0) - coalesce(deducted,0)), 0)
       into v_prev_carry from public.employee_years where employee_id = emp.id and year < v_year;
     v_prev_carry := greatest(0, v_prev_carry);
@@ -219,7 +230,7 @@ begin
     else v_fifo_source := 'موزع';
     end if;
     insert into public.employee_years (employee_id, year, added, deducted)
-    values (emp.id, v_year, case when emp.over_45 then 45 else 30 end, 0)
+    values (emp.id, v_year, v_dynamic_added, 0)
     on conflict (employee_id, year) do nothing;
     update public.employee_years set deducted = deducted + v_days
         where employee_id = emp.id and year = v_year;

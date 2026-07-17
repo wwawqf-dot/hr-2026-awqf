@@ -1,6 +1,6 @@
 import { Fragment, useMemo } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
-import { computeYearlyLedger, computeFifoAudit } from '../utils/leaveCalc';
+import { computeYearlyLedger } from '../utils/leaveCalc';
 import { getLastDayPrevMonthStr, getAccruedDays } from '../utils/libyaTime';
 
 export default function EmployeesTable({ employees, years, onDeduct, onEdit, onDelete }) {
@@ -64,8 +64,6 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                     {sortedEmployees.map((emp, index) => {
                         const ledger = computeYearlyLedger(emp, years);
                         const monthlyRate = emp.over_45 ? 3.75 : 2.5;
-                        const audit = computeFifoAudit(emp, years, monthlyRate);
-
                         const enrichedLedger = ledger.map((row) => {
                             if (Number(row.year) === realLibyaYear) {
                                 return { ...row, added: getAccruedDays(realLibyaYear, monthlyRate) };
@@ -83,11 +81,6 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                                         {emp.is_frozen && <span className="tag-danger">مُجمّد</span>}
                                     </div>
                                     <div className="emp-job-row">{emp.job_number || '-'}</div>
-                                    <div className="fifo-stack">
-                                        <span className="fifo-stack-item">مستهلك من السابقة: <b className="text-warning">{audit.consumedFromPrev}</b></span>
-                                        <span className="fifo-stack-item">مستهلك من الحالية: <b className="text-danger">{audit.consumedFromCurrent}</b></span>
-                                        <span className="fifo-stack-item">الصافي القانوني: <b className="text-emerald">{audit.legalNet}</b></span>
-                                    </div>
                                 </td>
                                 <td style={{ color: 'var(--text-muted)' }}>{emp.national_id || '-'}</td>
                                 <td>{emp.job_title || '-'}</td>

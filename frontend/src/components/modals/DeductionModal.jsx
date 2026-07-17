@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { calculateDeductionDays } from '../../utils/deductionDays';
-import { getLibyaDateStr, getAccrualLabel } from '../../utils/libyaTime';
+import { getLibyaDateStr, getAccrualLabel, getAccruedDays } from '../../utils/libyaTime';
 import { computeFifoAudit } from '../../utils/leaveCalc';
 import CustomConfirmModal from './CustomConfirmModal';
 
@@ -25,12 +25,19 @@ function daysBetween(fromStr, toStr) {
     return Math.round((to - from) / 86400000);
 }
 
-function computeNetBalance(employee) {
+function computeNetBalance(employee, monthlyRate) {
+    const currentYear = String(new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date()));
     const initial = parseFloat(employee.initial_carried_forward) || 0;
-    return Object.values(employee.years_data || {}).reduce(
-        (acc, yd) => acc + (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0),
-        initial
-    );
+    const yearsData = employee.years_data || {};
+    let balance = initial;
+    for (const [year, yd] of Object.entries(yearsData)) {
+        balance += (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0);
+    }
+    // Add dynamic accrual for current year if not yet stored in DB
+    if (!yearsData[currentYear]) {
+        balance += getAccruedDays(Number(currentYear), monthlyRate);
+    }
+    return balance;
 }
 
 export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDeduction }) {
@@ -59,7 +66,7 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
     const hasDates = Boolean(start || end);
     const days = hasUnknownDays ? Number(unknownDays) : calculateDeductionDays(start, end, holidays, employee.job_title);
 
-    const netBalance = computeNetBalance(employee);
+    const netBalance = computeNetBalance(employee, monthlyRate);
     const retroDaysLive = !hasUnknownDays && start ? daysBetween(start, localTodayStr()) : null;
     const retroBlocked = retroDaysLive !== null && retroDaysLive > RETRO_LIMIT_DAYS;
     const balanceBlocked = days > 0 && days > netBalance;
@@ -95,7 +102,7 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
             }
         }
 
-        if (days > computeNetBalance(employee)) {
+        if (days > computeNetBalance(employee, monthlyRate)) {
             setError('فشلت العملية: رصيد الموظف الحالي غير كافٍ لتغطية عدد أيام الخصم المطلوبة.');
             return;
         }
@@ -140,14 +147,26 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
                     <button className="close-modal" onClick={onClose}>&times;</button>
                 </div>
                 <p style={{ marginBottom: '0.8rem', color: '#60a5fa', fontWeight: 'bold', fontSize: '1.05rem' }}>
-                    الموظف: {employee.name} <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.85rem' }}>({employee.job_number || '-'})</span>
+                    {employee.name} <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.88rem' }}>({employee.job_number || '-'})</span>
                 </p>
 
-                {/* FIFO balance summary */}
-                <div className="fifo-balance-bar">
-                    <span><i className="fas fa-arrow-left"></i> المرحّل: <b>{fifo.previousCarryOver}</b></span>
-                    <span><i className="fas fa-calendar-plus"></i> {getAccrualLabel()}: <b>{fifo.accruedDays}</b></span>
-                    <span><i className="fas fa-chart-simple"></i> الإجمالي: <b className="text-emerald">{netBalance}</b></span>
+                <div className="fifo-stats-grid">
+                    <div className="fifo-stat-card">
+                        <span className="fifo-stat-label">الرصيد المرحّل</span>
+                        <span className="fifo-stat-val blue">{fifo.previousCarryOver}</span>
+                    </div>
+                    <div className="fifo-stat-card">
+                        <span className="fifo-stat-label">مستهلك من السابقة</span>
+                        <span className="fifo-stat-val orange">{fifo.consumedFromPrev}</span>
+                    </div>
+                    <div className="fifo-stat-card">
+                        <span className="fifo-stat-label">مستهلك من الحالية</span>
+                        <span className="fifo-stat-val red">{fifo.consumedFromCurrent}</span>
+                    </div>
+                    <div className="fifo-stat-card">
+                        <span className="fifo-stat-label">الصافي القانوني</span>
+                        <span className="fifo-stat-val green">{fifo.legalNet}</span>
+                    </div>
                 </div>
 
                 {error && <div className="form-error">{error}</div>}

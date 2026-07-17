@@ -317,12 +317,14 @@ tbody tr:hover { background: rgba(16, 185, 129, 0.05); }
 .num-closing { color: #f59e0b; font-weight: bold; font-size: 1rem; text-align: center; }
 
 .emp-name-row { line-height: 1.4; }
-.fifo-stack { margin-top: 4px; line-height: 1.5; }
-.fifo-stack-item { display: block; font-size: 0.68rem; color: var(--text-muted); font-weight: 400; }
-.fifo-stack-item b { font-weight: 700; }
-.fifo-stack-item .text-warning { color: #f59e0b; }
-.fifo-stack-item .text-danger { color: #ef4444; }
-.fifo-stack-item .text-emerald { color: #10b981; }
+.fifo-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 1rem; }
+.fifo-stat-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 0.55rem 0.6rem; text-align: center; }
+.fifo-stat-label { display: block; font-size: 0.7rem; color: var(--text-muted); margin-bottom: 2px; }
+.fifo-stat-val { font-size: 1rem; font-weight: 800; }
+.fifo-stat-val.blue { color: #60a5fa; }
+.fifo-stat-val.orange { color: #f59e0b; }
+.fifo-stat-val.red { color: #ef4444; }
+.fifo-stat-val.green { color: #10b981; }
 .added-header-stack { display: flex; flex-direction: column; align-items: center; line-height: 1.3; }
 .added-header-sub { font-size: 0.75em; color: var(--text-muted); font-weight: 400; }
 .btn-sm { padding: 0.45rem 0.85rem; font-size: 0.82rem; }

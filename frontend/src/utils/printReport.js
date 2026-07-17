@@ -1,5 +1,5 @@
 import { formatDateDisplay } from './formatDate';
-import { getLibyaTime, getAccrualLabel } from './libyaTime';
+import { getLibyaTime, getAccrualLabel, getAccruedDays } from './libyaTime';
 import { computeYearlyLedger } from './leaveCalc';
 
 export function printReport(selectedYear, years, employees, openingBalanceDate) {
@@ -123,11 +123,16 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
 
         if (isAllYears) {
             const ledger = computeYearlyLedger(emp, years);
+            let runningOpening = initialCarried;
             ledger.forEach((row) => {
-                html += `<td>${row.opening === 0 ? '0' : row.opening}</td>
-                    <td>${row.added === 0 ? '-' : row.added}</td>
+                const monthlyRate = emp.over_45 ? 3.75 : 2.5;
+                const addedVal = row.year === realLibyaYear ? getAccruedDays(Number(realLibyaYear), monthlyRate) : row.added;
+                const closing = runningOpening + addedVal - row.deducted;
+                html += `<td>${runningOpening === 0 ? '0' : runningOpening}</td>
+                    <td>${addedVal === 0 ? '-' : addedVal}</td>
                     <td>${row.deducted === 0 ? '-' : row.deducted}</td>
-                    <td>${row.closing}</td>`;
+                    <td>${closing}</td>`;
+                runningOpening = closing;
             });
         } else {
             let carriedForSelectedYear = initialCarried;
@@ -135,7 +140,10 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
                 if (y === selectedYear) break;
                 carriedForSelectedYear += (parseFloat(emp.years_data[y]?.added) || 0) - (parseFloat(emp.years_data[y]?.deducted) || 0);
             }
-            const added = parseFloat(emp.years_data[selectedYear]?.added) || 0;
+            const monthlyRate = emp.over_45 ? 3.75 : 2.5;
+            const added = selectedYear === realLibyaYear
+                ? getAccruedDays(Number(realLibyaYear), monthlyRate)
+                : (parseFloat(emp.years_data[selectedYear]?.added) || 0);
             const deducted = parseFloat(emp.years_data[selectedYear]?.deducted) || 0;
             const net = carriedForSelectedYear + added - deducted;
 

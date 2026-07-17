@@ -1,16 +1,23 @@
 import { formatDateDisplay } from './formatDate';
-import { getLibyaTime, getAccrualLabel, getAccruedDays } from './libyaTime';
+import { getLibyaTime, getAccrualLabel, getAccruedDays, getLibyaYear } from './libyaTime';
 
 function computeNetCumulative(employee) {
+    const currentYear = getLibyaYear();
+    const monthlyRate = employee.over_45 ? 3.75 : 2.5;
     const initial = parseFloat(employee.initial_carried_forward) || 0;
-    return Object.values(employee.years_data || {}).reduce(
-        (acc, yd) => acc + (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0),
-        initial
-    );
+    const yearsData = employee.years_data || {};
+    let balance = initial;
+    for (const [year, yd] of Object.entries(yearsData)) {
+        balance += (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0);
+    }
+    if (!yearsData[currentYear]) {
+        balance += getAccruedDays(Number(currentYear), monthlyRate);
+    }
+    return balance;
 }
 
 function computePreviousCarryOver(employee, years) {
-    const currentYear = new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date());
+    const currentYear = getLibyaYear();
     let carry = parseFloat(employee.initial_carried_forward) || 0;
     for (const y of years) {
         if (Number(y) >= Number(currentYear)) break;
@@ -40,7 +47,7 @@ export function printEmployeeStatement(employee) {
     const prevCarry = computePreviousCarryOver(employee, years);
     const monthlyRate = employee.over_45 ? 3.75 : 2.5;
     const accruedLabel = getAccrualLabel();
-    const accruedDays = getAccruedDays(Number(new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date())), monthlyRate);
+    const accruedDays = getAccruedDays(Number(getLibyaYear()), monthlyRate);
     const totalDeducted = Object.values(employee.years_data || {}).reduce((sum, yd) => sum + (parseFloat(yd?.deducted) || 0), 0);
     const history = employee.deductions_history || [];
 
