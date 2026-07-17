@@ -52,6 +52,8 @@ create table if not exists public.employees (
     is_frozen               boolean not null default false,
     hire_date               text default '',
     hire_date_current_year  date default null,
+    ceiled_cumulative_balance numeric default null,
+    carryover_ceiled_at_year  text default null,
     created_at              timestamptz not null default now()
 );
 -- Fast lookups used by the JSON sync bridge (match by job_number).
@@ -181,6 +183,8 @@ as $$
         'is_frozen', e.is_frozen,
         'hire_date', coalesce(e.hire_date, ''),
         'hire_date_current_year', e.hire_date_current_year,
+        'ceiled_cumulative_balance', e.ceiled_cumulative_balance,
+        'carryover_ceiled_at_year', e.carryover_ceiled_at_year,
         'years_data', coalesce((
             select jsonb_object_agg(ey.year,
                        jsonb_build_object('added', ey.added, 'deducted', ey.deducted))
@@ -190,7 +194,8 @@ as $$
             select jsonb_agg(jsonb_build_object(
                        'id', d.id, 'year', d.year, 'start', d.start_date,
                        'end', d.end_date, 'days', d.days, 'note', d.note,
-                       'createdBy', d.created_by, 'createdAt', d.created_at
+                       'createdBy', d.created_by, 'createdAt', d.created_at,
+                       'deductionSource', d.deduction_source
                    ) order by d.id)
             from public.deductions d where d.employee_id = e.id
         ), '[]'::jsonb),
@@ -824,6 +829,7 @@ $$;
 
 -- Add a financial year and grant it to every employee (ADMIN only) —
 -- mirrors POST /years (over-45 employees get 45, others p_default_days).
+-- Also CEILs the running balance and stores it as ceiled_cumulative_balance.
 create or replace function public.add_year(p_year text, p_default_days numeric default 30)
 returns jsonb
 language plpgsql
@@ -831,6 +837,8 @@ security definer
 set search_path = public
 as $$
 declare v_role text; v_username text; v_year text; v_default numeric;
+    emp record;
+    v_running numeric;
 begin
     select role, coalesce(username,'') into v_role, v_username
         from public.profiles where id = auth.uid();
@@ -845,6 +853,16 @@ begin
     insert into public.employee_years (employee_id, year, added, deducted)
     select id, v_year, case when over_45 then 45 else v_default end, 0 from public.employees
     on conflict (employee_id, year) do nothing;
+    for emp in select e.id, e.initial_carried_forward from public.employees e loop
+        select coalesce(emp.initial_carried_forward, 0)
+             + coalesce(sum(coalesce(added,0) - coalesce(deducted,0)), 0)
+          into v_running
+          from public.employee_years where employee_id = emp.id;
+        update public.employees set
+            ceiled_cumulative_balance = ceil(v_running),
+            carryover_ceiled_at_year = v_year
+        where id = emp.id;
+    end loop;
     perform public.log_action(v_role, v_username, 'إضافة سنة مالية', format('السنة: %s', v_year));
     return jsonb_build_object('years',
         coalesce((select jsonb_agg(year order by cast(year as integer)) from public.years), '[]'::jsonb));

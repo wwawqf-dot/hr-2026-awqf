@@ -225,6 +225,11 @@ alter table public.deductions
 alter table public.employees
     add column if not exists hire_date_current_year date default null;
 
+-- أعمدة تقريب الرصيد التراكمي عند فتح سنة مالية جديدة (CEIL)
+alter table public.employees
+    add column if not exists ceiled_cumulative_balance numeric default null,
+    add column if not exists carryover_ceiled_at_year text default null;
+
 create or replace function public.register_deduction(p_employee_id bigint, p_payload jsonb)
 returns jsonb
 language plpgsql
@@ -342,6 +347,8 @@ as $$
         'initial_carried_forward', e.initial_carried_forward, 'over_45', e.over_45,
         'is_frozen', e.is_frozen, 'hire_date', coalesce(e.hire_date, ''),
         'hire_date_current_year', e.hire_date_current_year,
+        'ceiled_cumulative_balance', e.ceiled_cumulative_balance,
+        'carryover_ceiled_at_year', e.carryover_ceiled_at_year,
         'years_data', coalesce((
             select jsonb_object_agg(ey.year, jsonb_build_object('added', ey.added, 'deducted', ey.deducted))
             from public.employee_years ey where ey.employee_id = e.id
@@ -357,6 +364,46 @@ as $$
         'createdAt', e.created_at
     )
     from public.employees e where e.id = p_id;
+$$;
+
+-- Update add_year to CEIL running balance and record the boundary year
+create or replace function public.add_year(p_year text, p_default_days numeric default 30)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_role text; v_username text; v_year text; v_default numeric;
+    emp record;
+    v_running numeric;
+begin
+    select role, coalesce(username,'') into v_role, v_username
+        from public.profiles where id = auth.uid();
+    if v_role is distinct from 'admin' then raise exception 'هذه العملية مقصورة على المدير'; end if;
+    v_year := trim(coalesce(p_year, ''));
+    if v_year !~ '^\d{4}$' then raise exception 'يرجى إدخال سنة مالية صحيحة'; end if;
+    if exists (select 1 from public.years where year = v_year) then
+        raise exception 'هذه السنة مسجلة مسبقاً';
+    end if;
+    v_default := coalesce(p_default_days, 30);
+    insert into public.years (year) values (v_year);
+    insert into public.employee_years (employee_id, year, added, deducted)
+    select id, v_year, case when over_45 then 45 else v_default end, 0 from public.employees
+    on conflict (employee_id, year) do nothing;
+    for emp in select e.id, e.initial_carried_forward from public.employees e loop
+        select coalesce(emp.initial_carried_forward, 0)
+             + coalesce(sum(coalesce(added,0) - coalesce(deducted,0)), 0)
+          into v_running
+          from public.employee_years where employee_id = emp.id;
+        update public.employees set
+            ceiled_cumulative_balance = ceil(v_running),
+            carryover_ceiled_at_year = v_year
+        where id = emp.id;
+    end loop;
+    perform public.log_action(v_role, v_username, 'إضافة سنة مالية', format('السنة: %s', v_year));
+    return jsonb_build_object('years',
+        coalesce((select jsonb_agg(year order by cast(year as integer)) from public.years), '[]'::jsonb));
+end;
 $$;
 
 -- ============================================================

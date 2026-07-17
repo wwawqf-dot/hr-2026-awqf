@@ -82,6 +82,13 @@ export default function SettingsPage() {
             setYearError('يرجى إدخال سنة مالية صحيحة وغير مكررة');
             return;
         }
+        const lastYear = years.length > 0 ? years[years.length - 1] : '—';
+        const msg =
+            `هل أنت متأكد من إضافة السنة المالية ${yearStr}؟\n\n` +
+            `سيتم ترحيل الأرصدة من سنة ${lastYear} تلقائياً مع تقريب الرصيد التراكمي النهائي (CEIL) إلى أعلى عدد صحيح. سيتم تسجيل مضاف افتراضي ${defaultAdded} يوم لكل موظف. لا يمكن التراجع عن هذه العملية.\n\n` +
+            `يرجى التأكد من الانتهاء من تسجيل جميع خصومات سنة ${lastYear} قبل المتابعة.`;
+        if (!window.confirm(msg)) return;
+
         setSavingYear(true);
         try {
             await addYear({ year: yearStr, defaultAddedDays: Number(defaultAdded) || 0 });

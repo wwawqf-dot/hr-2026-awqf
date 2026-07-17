@@ -12,6 +12,7 @@ import ReportModal from './modals/ReportModal';
 import StatementModal from './modals/StatementModal';
 import FreezeModal from './modals/FreezeModal';
 import CustomConfirmModal from './modals/CustomConfirmModal';
+import { exportEmployeesToExcel } from '../utils/exportExcel';
 
 export default function EmployeesPage() {
     const { canAdd, canFreeze, canEdit } = usePermissions();
@@ -69,6 +70,9 @@ export default function EmployeesPage() {
                 </button>
                 <button className="btn btn-report" onClick={() => setModal({ type: 'statement' })}>
                     كشف حساب فردي <i className="fas fa-file-invoice"></i>
+                </button>
+                <button className="btn btn-report" onClick={() => exportEmployeesToExcel(employees, years)}>
+                    <i className="fas fa-file-excel"></i> تصدير Excel
                 </button>
                 {canFreeze && (
                     <button className="btn btn-report" onClick={() => setModal({ type: 'freeze' })}>

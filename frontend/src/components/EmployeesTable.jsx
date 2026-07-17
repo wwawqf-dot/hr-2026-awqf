@@ -1,6 +1,7 @@
 import { Fragment, useMemo } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
 import { getLastDayPrevMonthStr, getAccruedDays } from '../utils/libyaTime';
+import { computeYearlyLedger } from '../utils/leaveCalc';
 
 export default function EmployeesTable({ employees, years, onDeduct, onEdit, onDelete }) {
     const { canDeduct, canEdit, canDelete } = usePermissions();
@@ -62,20 +63,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                 <tbody>
                     {sortedEmployees.map((emp, index) => {
                         const monthlyRate = emp.over_45 ? 3.75 : 2.5;
-                        const enrichedLedger = (() => {
-                            let opening = parseFloat(emp.initial_carried_forward) || 0;
-                            return years.map((year) => {
-                                const yd = emp.years_data?.[year] || { added: 0, deducted: 0 };
-                                const added = Number(year) === realLibyaYear
-                                    ? getAccruedDays(realLibyaYear, monthlyRate, emp.hire_date_current_year)
-                                    : (parseFloat(yd.added) || 0);
-                                const deducted = parseFloat(yd.deducted) || 0;
-                                const closing = +(opening + added - deducted).toFixed(1);
-                                const row = { year, opening, added, deducted, closing };
-                                opening = closing;
-                                return row;
-                            });
-                        })();
+                        const enrichedLedger = computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
 
                         return (
                             <tr key={emp.id} style={emp.is_frozen ? { opacity: 0.6 } : undefined}>
