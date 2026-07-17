@@ -223,13 +223,10 @@ export const api = {
             throw e;
         }
     },
-    consumeInviteCode: async (code, userId) => {
+    consumeInviteCode: async (code) => {
         await safeSupabase(
-            supabase.from('invite_codes').update({ is_used: true }).eq('code', code).eq('is_used', false)
+            supabase.rpc('consume_invite_code', { p_code: code })
         );
-        if (userId) {
-            await supabase.from('profiles').update({ role: 'data_entry' }).eq('id', userId);
-        }
         return { message: 'تم استهلاك رمز الدعوة' };
     },
 
