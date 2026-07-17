@@ -236,6 +236,11 @@ alter table public.employees
     add column if not exists ceiled_cumulative_balance numeric default null,
     add column if not exists carryover_ceiled_at_year text default null;
 
+-- أعمدة التحكم بالطباعة وإجازة بدون مرتب
+alter table public.employees
+    add column if not exists include_in_print boolean not null default true,
+    add column if not exists is_unpaid_leave boolean not null default false;
+
 create or replace function public.register_deduction(p_employee_id bigint, p_payload jsonb)
 returns jsonb
 language plpgsql
@@ -351,7 +356,8 @@ as $$
         'id', e.id, 'name', e.name, 'job_number', coalesce(e.job_number, ''),
         'national_id', coalesce(e.national_id, ''), 'job_title', coalesce(e.job_title, ''),
         'initial_carried_forward', e.initial_carried_forward, 'over_45', e.over_45,
-        'is_frozen', e.is_frozen, 'hire_date', coalesce(e.hire_date, ''),
+        'is_frozen', e.is_frozen, 'include_in_print', e.include_in_print,
+        'is_unpaid_leave', e.is_unpaid_leave, 'hire_date', coalesce(e.hire_date, ''),
         'hire_date_current_year', e.hire_date_current_year,
         'ceiled_cumulative_balance', e.ceiled_cumulative_balance,
         'carryover_ceiled_at_year', e.carryover_ceiled_at_year,

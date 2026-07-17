@@ -44,8 +44,8 @@ export function useLeaveData() {
         setEmployees((prev) => prev.filter((e) => e.id !== id));
     }
 
-    async function toggleFreeze(id) {
-        const data = await api.toggleFreeze(id);
+    async function toggleFreeze(id, includeInPrint) {
+        const data = await api.toggleFreeze(id, includeInPrint);
         setEmployees((prev) => prev.map((e) => (e.id === id ? data.employee : e)));
         return data.employee;
     }

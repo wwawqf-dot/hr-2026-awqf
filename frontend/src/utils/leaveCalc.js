@@ -1,6 +1,9 @@
 import { getAccruedDays, getAccruedMonths, getLibyaYear } from './libyaTime';
 
 export function computeYearlyLedger(employee, years, realLibyaYear, monthlyRate) {
+    if (employee.is_unpaid_leave) {
+        return years.map((year) => ({ year, opening: 0, added: 0, deducted: 0, closing: 0 }));
+    }
     const ceiledAtYear = employee.carryover_ceiled_at_year;
     const ceiledBalance = parseFloat(employee.ceiled_cumulative_balance) || null;
     let opening = parseFloat(employee.initial_carried_forward) || 0;
@@ -26,6 +29,9 @@ export function computeYearlyLedger(employee, years, realLibyaYear, monthlyRate)
 
 // FIFO audit: deduct from previous years' carry-over BEFORE current year.
 export function computeFifoAudit(employee, years, monthlyRate = 2.5) {
+    if (employee.is_unpaid_leave) {
+        return { previousCarryOver: 0, accruedDays: 0, totalDeducted: 0, consumedFromPrev: 0, consumedFromCurrent: 0, legalNet: 0 };
+    }
     const currentYear = Number(getLibyaYear());
     let previousCarryOver = parseFloat(employee.initial_carried_forward) || 0;
 

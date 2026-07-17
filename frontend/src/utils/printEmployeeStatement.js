@@ -2,6 +2,7 @@ import { formatDateDisplay } from './formatDate';
 import { getLibyaTime, getAccrualLabel, getAccruedDays, getLibyaYear } from './libyaTime';
 
 function computeNetCumulative(employee) {
+    if (employee.is_unpaid_leave) return 0;
     const currentYear = getLibyaYear();
     const monthlyRate = employee.over_45 ? 3.75 : 2.5;
     const initial = parseFloat(employee.initial_carried_forward) || 0;
@@ -17,6 +18,7 @@ function computeNetCumulative(employee) {
 }
 
 function computePreviousCarryOver(employee, years) {
+    if (employee.is_unpaid_leave) return 0;
     const currentYear = getLibyaYear();
     let carry = parseFloat(employee.initial_carried_forward) || 0;
     for (const y of years) {
@@ -118,7 +120,7 @@ export function printEmployeeStatement(employee) {
         <hr style="border: 0; border-top: 3px solid #000; margin-bottom: 5px;">
 
         <div class="employee-details">
-            <div class="detail-item"><span class="label">الإسم:</span> ${escapeHtml(employee.name)}</div>
+            <div class="detail-item"><span class="label">الإسم:</span> ${escapeHtml(employee.name)} ${employee.is_unpaid_leave ? '<span style="color:#dc2626;font-weight:800;margin-right:8px;">(إجازة بدون مرتب)</span>' : ''}</div>
             <div class="detail-item"><span class="label">الرقم الوظيفي:</span> ${escapeHtml(employee.job_number || '-')}</div>
             <div class="detail-item"><span class="label">الصفة الوظيفية:</span> ${escapeHtml(employee.job_title || '-')}</div>
             <div class="detail-item"><span class="label">الرقم الوطني:</span> ${escapeHtml(employee.national_id || '-')}</div>

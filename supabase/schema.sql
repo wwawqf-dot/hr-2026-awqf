@@ -55,6 +55,8 @@ create table if not exists public.employees (
     hire_date_current_year  date default null,
     ceiled_cumulative_balance numeric default null,
     carryover_ceiled_at_year  text default null,
+    include_in_print        boolean not null default true,
+    is_unpaid_leave         boolean not null default false,
     created_at              timestamptz not null default now()
 );
 -- Fast lookups used by the JSON sync bridge (match by job_number).
@@ -193,6 +195,8 @@ as $$
         'initial_carried_forward', e.initial_carried_forward,
         'over_45', e.over_45,
         'is_frozen', e.is_frozen,
+        'include_in_print', e.include_in_print,
+        'is_unpaid_leave', e.is_unpaid_leave,
         'hire_date', coalesce(e.hire_date, ''),
         'hire_date_current_year', e.hire_date_current_year,
         'ceiled_cumulative_balance', e.ceiled_cumulative_balance,
@@ -436,13 +440,16 @@ begin
                        else v_years[array_length(v_years,1)] end;
 
     insert into public.employees
-        (name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, hire_date, hire_date_current_year, created_at)
+        (name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, include_in_print, is_unpaid_leave, hire_date, hire_date_current_year, created_at)
     values (
         v_name,
         trim(coalesce(p_payload->>'job_number','')),
         trim(coalesce(p_payload->>'national_id','')),
         trim(coalesce(p_payload->>'job_title','')),
-        v_initial, v_over45, false, v_hire, v_hire_current_year, now()
+        v_initial, v_over45, false,
+        coalesce((p_payload->>'include_in_print')::boolean, true),
+        coalesce((p_payload->>'is_unpaid_leave')::boolean, false),
+        v_hire, v_hire_current_year, now()
     ) returning id into v_new_id;
 
     v_current_added := case when v_over45 then 45 else 30 end;
@@ -519,6 +526,8 @@ begin
         job_title   = trim(coalesce(p_payload->>'job_title','')),
         initial_carried_forward = v_initial,
         over_45   = coalesce((p_payload->>'over_45')::boolean, false),
+        is_unpaid_leave = coalesce((p_payload->>'is_unpaid_leave')::boolean, false),
+        include_in_print = coalesce((p_payload->>'include_in_print')::boolean, true),
         hire_date = v_hire,
         hire_date_current_year = v_hire_current_year
     where id = p_id;
@@ -559,8 +568,11 @@ begin
 end;
 $$;
 
--- Toggle frozen status (ADMIN only). Reversible; deletes nothing.
-create or replace function public.toggle_employee_freeze(p_id bigint)
+-- Toggle frozen status (ADMIN only). Sets include_in_print when freezing.
+create or replace function public.toggle_employee_freeze(
+    p_id bigint,
+    p_include_in_print boolean default true
+)
 returns jsonb
 language plpgsql
 security definer
@@ -576,7 +588,13 @@ begin
     select * into emp from public.employees where id = p_id for update;
     if not found then raise exception 'الموظف غير موجود'; end if;
 
-    update public.employees set is_frozen = not is_frozen where id = p_id;
+    if emp.is_frozen then
+        -- unfreeze: reset include_in_print to true
+        update public.employees set is_frozen = false, include_in_print = true where id = p_id;
+    else
+        -- freeze: honour the admin's print preference
+        update public.employees set is_frozen = true, include_in_print = p_include_in_print where id = p_id;
+    end if;
     perform public.log_action(v_role, v_username,
         case when emp.is_frozen then 'إلغاء تجميد موظف' else 'تجميد موظف' end,
         format('الموظف: %s', emp.name));
@@ -631,7 +649,7 @@ begin
 
         if v_target is null then
             insert into public.employees
-                (id, name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, hire_date, hire_date_current_year, created_at)
+                (id, name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, include_in_print, is_unpaid_leave, hire_date, hire_date_current_year, created_at)
             values (
                 coalesce(nullif(emp->>'id','')::bigint,
                          nextval(pg_get_serial_sequence('public.employees','id'))),
@@ -642,6 +660,8 @@ begin
                 coalesce((emp->>'initial_carried_forward')::numeric, 0),
                 coalesce((emp->>'over_45')::boolean, false),
                 coalesce((emp->>'is_frozen')::boolean, false),
+                coalesce((emp->>'include_in_print')::boolean, true),
+                coalesce((emp->>'is_unpaid_leave')::boolean, false),
                 coalesce(trim(emp->>'hire_date'),''),
                 coalesce(nullif(emp->>'hire_date_current_year',''), null)::date,
                 coalesce((emp->>'createdAt')::timestamptz, now())
@@ -656,6 +676,8 @@ begin
                 initial_carried_forward = coalesce((emp->>'initial_carried_forward')::numeric, initial_carried_forward),
                 over_45   = coalesce((emp->>'over_45')::boolean, over_45),
                 is_frozen = coalesce((emp->>'is_frozen')::boolean, is_frozen),
+                include_in_print = coalesce((emp->>'include_in_print')::boolean, include_in_print),
+                is_unpaid_leave = coalesce((emp->>'is_unpaid_leave')::boolean, is_unpaid_leave),
                 hire_date = coalesce(trim(emp->>'hire_date'), hire_date),
                 hire_date_current_year = coalesce(nullif(emp->>'hire_date_current_year',''), hire_date_current_year)::date
             where id = v_target;
@@ -985,7 +1007,7 @@ grant execute on function public.register_deduction(bigint, jsonb)              
 grant execute on function public.delete_deduction(bigint)                        to authenticated;
 grant execute on function public.create_employee(jsonb)                          to authenticated;
 grant execute on function public.update_employee(bigint, jsonb)                  to authenticated;
-grant execute on function public.toggle_employee_freeze(bigint)                  to authenticated;
+grant execute on function public.toggle_employee_freeze(bigint, boolean)         to authenticated;
 grant execute on function public.sync_employees(jsonb)                           to authenticated;
 grant execute on function public.list_employees()                                to authenticated;
 grant execute on function public.export_all()                                    to authenticated;

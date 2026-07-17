@@ -4,6 +4,7 @@ import { useState } from 'react';
 // confirm freezing/unfreezing their record. Admin-only (gated by caller).
 export default function FreezeModal({ employees, onToggleFreeze, onClose }) {
     const [selectedId, setSelectedId] = useState('');
+    const [includeInPrint, setIncludeInPrint] = useState(true);
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
 
@@ -16,7 +17,7 @@ export default function FreezeModal({ employees, onToggleFreeze, onClose }) {
         }
         setSaving(true);
         try {
-            await onToggleFreeze(employee.id);
+            await onToggleFreeze(employee.id, includeInPrint);
             onClose();
         } catch (err) {
             setError(err.message || 'تعذر تنفيذ العملية');
@@ -69,10 +70,21 @@ export default function FreezeModal({ employees, onToggleFreeze, onClose }) {
                                 <b>إلغاء التجميد</b> وإعادته إلى القائمة النشطة.
                             </span>
                         ) : (
-                            <span>
-                                سيتم <b style={{ color: '#ef4444' }}>تجميد</b> سجل الموظف{' '}
-                                <b>{employee.name}</b>، وسيُنقل إلى أسفل القائمة مع شارة "مُجمّد". لا تُحذف أي بيانات ويمكن التراجع.
-                            </span>
+                            <>
+                                <span>
+                                    سيتم <b style={{ color: '#ef4444' }}>تجميد</b> سجل الموظف{' '}
+                                    <b>{employee.name}</b>، وسيُنقل إلى أسفل القائمة مع شارة "مُجمّد". لا تُحذف أي بيانات ويمكن التراجع.
+                                </span>
+                                <div className="checkbox-group" style={{ marginTop: '0.8rem' }}>
+                                    <input
+                                        type="checkbox"
+                                        id="includeInPrint"
+                                        checked={includeInPrint}
+                                        onChange={(e) => setIncludeInPrint(e.target.checked)}
+                                    />
+                                    <label htmlFor="includeInPrint">إظهار الموظف في تقارير الطباعة</label>
+                                </div>
+                            </>
                         )}
                     </div>
                 )}

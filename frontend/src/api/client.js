@@ -119,7 +119,7 @@ export const api = {
         await safeSupabase(supabase.from('employees').delete().eq('id', id));
         return { message: 'تم حذف الموظف' };
     },
-    toggleFreeze: (id) => rpc('toggle_employee_freeze', { p_id: id }),
+    toggleFreeze: (id, includeInPrint = true) => rpc('toggle_employee_freeze', { p_id: id, p_include_in_print: includeInPrint }),
     bulkAddEmployees: (rows, reconciliationNote = 'تسوية جرد ورقي') =>
         rpc('bulk_add_employees', { p_rows: rows, p_note: reconciliationNote }),
 

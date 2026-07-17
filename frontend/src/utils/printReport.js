@@ -109,14 +109,18 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
 
     html += `</tr></thead><tbody>`;
 
-    employees.forEach((emp, index) => {
+    const printableEmployees = employees.filter(
+        (e) => !(e.is_frozen && e.include_in_print === false)
+    );
+
+    printableEmployees.forEach((emp, index) => {
         const monthlyRate = emp.over_45 ? 3.75 : 2.5;
         const ledger = computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
 
         html += `
             <tr>
                 <td>${index + 1}</td>
-                <td class="name-col">${emp.name}</td>
+                <td class="name-col">${emp.name}${emp.is_unpaid_leave ? ' <span style="color:#dc2626;font-size:0.8em;">(بدون مرتب)</span>' : ''}</td>
                 <td style="text-align: center; direction: ltr;">${emp.job_number || '-'}</td>
                 <td>${emp.national_id || '-'}</td>
                 <td>${emp.job_title || '-'}</td>
