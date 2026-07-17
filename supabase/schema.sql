@@ -296,6 +296,9 @@ begin
     -- passing the insufficient-balance check before either one commits.
     select * into emp from public.employees where id = p_employee_id for update;
     if not found then raise exception 'الموظف غير موجود'; end if;
+    if emp.is_unpaid_leave then
+        raise exception 'الموظف في إجازة بدون مرتب - لا يمكن تسجيل خصومات';
+    end if;
 
     v_note := nullif(left(trim(coalesce(p_payload->>'note','')), 500), '');
 

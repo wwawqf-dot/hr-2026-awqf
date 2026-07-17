@@ -26,6 +26,7 @@ function daysBetween(fromStr, toStr) {
 }
 
 function computeNetBalance(employee, monthlyRate) {
+    if (employee.is_unpaid_leave) return 0;
     const currentYear = String(new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date()));
     const initial = parseFloat(employee.initial_carried_forward) || 0;
     const yearsData = employee.years_data || {};

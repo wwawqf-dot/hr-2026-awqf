@@ -110,7 +110,7 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
     html += `</tr></thead><tbody>`;
 
     const printableEmployees = employees.filter(
-        (e) => !(e.is_frozen && e.include_in_print === false)
+        (e) => e.is_unpaid_leave || !(e.is_frozen && e.include_in_print === false)
     );
 
     printableEmployees.forEach((emp, index) => {
