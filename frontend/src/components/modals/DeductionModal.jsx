@@ -239,7 +239,12 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
                                                     <td style={{ textAlign: 'center' }}>{item.end}</td>
                                                 </>
                                             )}
-                                            <td style={{ textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>{item.days} أيام</td>
+                                            <td style={{ textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>
+                                                {item.days} أيام
+                                                {item.deductionSource && (
+                                                    <span style={{ fontSize: '0.65rem', fontWeight: 400, color: 'var(--text-muted)', marginRight: 4 }}>{item.deductionSource}</span>
+                                                )}
+                                            </td>
                                             <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>{item.note || '—'}</td>
                                             <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                                                 {isAdmin && (

@@ -1,11 +1,11 @@
 import { Fragment, useMemo } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
 import { computeYearlyLedger, computeFifoAudit } from '../utils/leaveCalc';
-import { getAccrualLabel, getAccruedDays } from '../utils/libyaTime';
+import { getLastDayPrevMonthStr, getAccruedDays } from '../utils/libyaTime';
 
 export default function EmployeesTable({ employees, years, onDeduct, onEdit, onDelete }) {
     const { canDeduct, canEdit, canDelete } = usePermissions();
-    const realLibyaYear = new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date());
+    const realLibyaYear = Number(new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date()));
 
     const sortedEmployees = useMemo(
         () => [...employees].sort((a, b) => (a.is_frozen ? 1 : 0) - (b.is_frozen ? 1 : 0)),
@@ -20,7 +20,8 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
         );
     }
 
-    const accrualLabel = getAccrualLabel();
+    // Header labels
+    const dateSuffix = getLastDayPrevMonthStr().slice(0, 5); // DD/MM only
 
     return (
         <div className="table-container compact-table">
@@ -37,17 +38,23 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                         <th rowSpan={2} className="actions-col" style={{ textAlign: 'center', minWidth: 110 }}>الإجراءات</th>
                     </tr>
                     <tr>
-                        {years.map((year) => (
-                            <Fragment key={year}>
-                                <th className="year-opening-header">
-                                    (الصافي التراكمي للسنوات السابقة)
-                                    <span className="header-sub">حتى تاريخ 31/12/{year - 1}</span>
-                                </th>
-                                <th className="year-col-header">{year === Number(realLibyaYear) ? accrualLabel : `مضاف ${year}`}</th>
-                                <th className="year-col-header">مخصوم {year}</th>
-                                <th className="year-col-header">الصافي التراكمي {year}</th>
-                            </Fragment>
-                        ))}
+                        {years.map((year) => {
+                            const yn = Number(year);
+                            const addedLabel = yn === realLibyaYear
+                                ? `مضاف ${year} (حتى ${dateSuffix})`
+                                : `مضاف ${year}`;
+                            return (
+                                <Fragment key={year}>
+                                    <th className="year-opening-header">
+                                        (الصافي التراكمي للسنوات السابقة)
+                                        <span className="header-sub">حتى تاريخ 31/12/{year - 1}</span>
+                                    </th>
+                                    <th className="year-col-header">{addedLabel}</th>
+                                    <th className="year-col-header">مخصوم {year}</th>
+                                    <th className="year-col-header">الصافي التراكمي {year}</th>
+                                </Fragment>
+                            );
+                        })}
                     </tr>
                 </thead>
                 <tbody>
@@ -55,23 +62,28 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                         const ledger = computeYearlyLedger(emp, years);
                         const monthlyRate = emp.over_45 ? 3.75 : 2.5;
                         const audit = computeFifoAudit(emp, years, monthlyRate);
+
+                        // Override current year added with dynamic accrual
+                        const enrichedLedger = ledger.map((row) => {
+                            if (Number(row.year) === realLibyaYear) {
+                                return { ...row, added: getAccruedDays(realLibyaYear, monthlyRate) };
+                            }
+                            return row;
+                        });
+
                         return (
                             <Fragment key={emp.id}>
                                 <tr style={emp.is_frozen ? { opacity: 0.6 } : undefined}>
                                     <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{index + 1}</td>
                                     <td style={{ fontWeight: 600, color: '#ffffff' }}>
                                         {emp.name}{' '}
-                                        {emp.over_45 && (
-                                            <span className="tag-warning">+45 سنة</span>
-                                        )}
-                                        {emp.is_frozen && (
-                                            <span className="tag-danger">مُجمّد</span>
-                                        )}
+                                        {emp.over_45 && <span className="tag-warning">+45 سنة</span>}
+                                        {emp.is_frozen && <span className="tag-danger">مُجمّد</span>}
                                         <div className="emp-job-row">{emp.job_number || '-'}</div>
                                     </td>
                                     <td style={{ color: 'var(--text-muted)' }}>{emp.national_id || '-'}</td>
                                     <td>{emp.job_title || '-'}</td>
-                                    {ledger.map((row) => (
+                                    {enrichedLedger.map((row) => (
                                         <Fragment key={row.year}>
                                             <td className="num-opening">{row.opening}</td>
                                             <td className="num-added">{row.added}</td>
@@ -100,12 +112,11 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                                         </div>
                                     </td>
                                 </tr>
-                                {/* FIFO audit row */}
                                 <tr className="fifo-audit-row" style={emp.is_frozen ? { opacity: 0.6 } : undefined}>
                                     <td></td>
                                     <td colSpan={3} className="fifo-audit-cell">
                                         <span className="fifo-item"><i className="fas fa-arrow-left"></i> الرصيد المرحل: <b>{audit.previousCarryOver}</b></span>
-                                        <span className="fifo-item"><i className="fas fa-calendar-plus"></i> {getAccrualLabel()}: <b>{audit.accruedDays}</b></span>
+                                        <span className="fifo-item"><i className="fas fa-calendar-plus"></i> مضاف حتى {getLastDayPrevMonthStr()}: <b>{audit.accruedDays}</b></span>
                                         <span className="fifo-item"><i className="fas fa-arrow-right"></i> مستهلك من السابقة: <b className="text-warning">{audit.consumedFromPrev}</b></span>
                                         <span className="fifo-item fifo-highlight">مستهلك من الحالية: <b className="text-danger">{audit.consumedFromCurrent}</b></span>
                                         <span className="fifo-item"><i className="fas fa-balance-scale"></i> الصافي القانوني: <b className="text-emerald">{audit.legalNet}</b></span>
