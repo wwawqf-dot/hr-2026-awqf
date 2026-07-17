@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { formatDateDisplay } from '../../utils/formatDate';
 
-const emptyForm = { name: '', job_number: '', national_id: '', job_title: '', initial_carried_forward: 0, over_45: false };
+const emptyForm = { name: '', job_number: '', national_id: '', job_title: '', initial_carried_forward: 0, over_45: false, hire_date_current_year: '' };
 
 const JOB_TITLES = ['إداري', 'محفظ', 'محفظة', 'موجه', 'مشرفة', 'مشرف', 'متابع', 'خطيب'];
 
@@ -22,6 +22,7 @@ export default function EmployeeFormModal({ mode, employee, years, openingBalanc
                 job_title: employee.job_title || '',
                 initial_carried_forward: employee.initial_carried_forward || 0,
                 over_45: employee.over_45 || false,
+                hire_date_current_year: employee.hire_date_current_year || '',
             });
             const initial = {};
             years.forEach((y) => {
@@ -67,6 +68,7 @@ export default function EmployeeFormModal({ mode, employee, years, openingBalanc
                 job_title: form.job_title.trim(),
                 initial_carried_forward: Number(form.initial_carried_forward) || 0,
                 over_45: form.over_45,
+                hire_date_current_year: form.hire_date_current_year || null,
                 years_data,
             };
             if (actualRemainingBalance !== '') {
@@ -135,6 +137,18 @@ export default function EmployeeFormModal({ mode, employee, years, openingBalanc
                             ))}
                         </select>
                     </div>
+                    <div className="form-group">
+                        <label>تاريخ المباشرة (للمعينين حديثاً هذا العام فقط)</label>
+                        <input
+                            type="date"
+                            value={form.hire_date_current_year}
+                            onChange={(e) => setForm((f) => ({ ...f, hire_date_current_year: e.target.value }))}
+                        />
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: 2 }}>
+                            اختياري — يُترك فارغاً للموظفين القُدامى. يُستخدم لحساب الرصيد النسبي للمُعيّنين خلال السنة الحالية.
+                        </span>
+                    </div>
+
                     <div className="form-group">
                         <label style={{ color: '#60a5fa', fontWeight: 'bold' }}>
                             الرصيد التراكمي (للسنوات السابقة)

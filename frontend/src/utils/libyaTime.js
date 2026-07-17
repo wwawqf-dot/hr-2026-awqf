@@ -58,6 +58,18 @@ export function getAccrualLabel() {
     return `مضاف حتى ${getLastDayPrevMonthStr()}`;
 }
 
-export function getAccruedDays(year, monthlyRate = 2.5) {
-    return +(getAccruedMonths(year) * monthlyRate).toFixed(1);
+export function getAccruedDays(year, monthlyRate = 2.5, hireDateCurrentYear = null) {
+    const targetYear = Number(year);
+    const currentYear = Number(getLibyaYear());
+    if (hireDateCurrentYear && targetYear === currentYear) {
+        const { year: ly, month } = getLibyaFields();
+        const cutOff = new Date(ly, month - 1, 1);
+        cutOff.setDate(0);
+        const [y, m, d] = hireDateCurrentYear.split('-').map(Number);
+        const hireDate = new Date(y, m - 1, d);
+        const diffDays = Math.round((cutOff - hireDate) / 86400000);
+        if (diffDays <= 0) return 0;
+        return +((diffDays / 30) * monthlyRate).toFixed(1);
+    }
+    return +(getAccruedMonths(targetYear) * monthlyRate).toFixed(1);
 }

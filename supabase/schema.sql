@@ -51,6 +51,7 @@ create table if not exists public.employees (
     over_45                 boolean not null default false,
     is_frozen               boolean not null default false,
     hire_date               text default '',
+    hire_date_current_year  date default null,
     created_at              timestamptz not null default now()
 );
 -- Fast lookups used by the JSON sync bridge (match by job_number).
@@ -179,6 +180,7 @@ as $$
         'over_45', e.over_45,
         'is_frozen', e.is_frozen,
         'hire_date', coalesce(e.hire_date, ''),
+        'hire_date_current_year', e.hire_date_current_year,
         'years_data', coalesce((
             select jsonb_object_agg(ey.year,
                        jsonb_build_object('added', ey.added, 'deducted', ey.deducted))
@@ -382,7 +384,8 @@ set search_path = public
 as $$
 declare
     v_role text; v_username text;
-    v_name text; v_hire text; v_recon_note text;
+    v_name text; v_hire text; v_hire_current_year date;
+    v_recon_note text;
     v_over45 boolean; v_initial numeric;
     v_has_remaining boolean; v_remaining numeric;
     v_years text[]; v_current text; v_year text;
@@ -403,6 +406,7 @@ begin
         raise exception 'تاريخ المباشرة يجب أن يكون بصيغة YYYY-MM-DD';
     end if;
 
+    v_hire_current_year := nullif(p_payload->>'hire_date_current_year', '')::date;
     v_over45  := coalesce((p_payload->>'over_45')::boolean, false);
     v_initial := coalesce((p_payload->>'initial_carried_forward')::numeric, 0);
     v_recon_note := left(trim(coalesce(p_payload->>'reconciliationNote','')), 500);
@@ -412,16 +416,16 @@ begin
 
     select array_agg(year order by cast(year as integer)) into v_years from public.years;
     v_current := case when array_length(v_years,1) is null then null
-                      else v_years[array_length(v_years,1)] end;
+                       else v_years[array_length(v_years,1)] end;
 
     insert into public.employees
-        (name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, hire_date, created_at)
+        (name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, hire_date, hire_date_current_year, created_at)
     values (
         v_name,
         trim(coalesce(p_payload->>'job_number','')),
         trim(coalesce(p_payload->>'national_id','')),
         trim(coalesce(p_payload->>'job_title','')),
-        v_initial, v_over45, false, v_hire, now()
+        v_initial, v_over45, false, v_hire, v_hire_current_year, now()
     ) returning id into v_new_id;
 
     v_current_added := case when v_over45 then 45 else 30 end;
@@ -462,7 +466,8 @@ set search_path = public
 as $$
 declare
     v_role text; v_username text; emp public.employees%rowtype;
-    v_name text; v_hire text; v_recon_note text;
+    v_name text; v_hire text; v_hire_current_year date;
+    v_recon_note text;
     v_initial numeric; v_has_remaining boolean; v_remaining numeric;
     v_years text[]; v_current text; v_year text; v_added numeric;
     v_net numeric; v_diff numeric; v_recon_days numeric := 0;
@@ -484,6 +489,7 @@ begin
         raise exception 'تاريخ المباشرة يجب أن يكون بصيغة YYYY-MM-DD';
     end if;
 
+    v_hire_current_year := nullif(p_payload->>'hire_date_current_year', '')::date;
     v_initial := coalesce((p_payload->>'initial_carried_forward')::numeric, 0);
     v_recon_note := left(trim(coalesce(p_payload->>'reconciliationNote','')), 500);
     v_has_remaining := nullif(trim(coalesce(p_payload->>'actualRemainingBalance','')), '') is not null;
@@ -496,7 +502,8 @@ begin
         job_title   = trim(coalesce(p_payload->>'job_title','')),
         initial_carried_forward = v_initial,
         over_45   = coalesce((p_payload->>'over_45')::boolean, false),
-        hire_date = v_hire
+        hire_date = v_hire,
+        hire_date_current_year = v_hire_current_year
     where id = p_id;
 
     if p_payload ? 'years_data' then
@@ -607,7 +614,7 @@ begin
 
         if v_target is null then
             insert into public.employees
-                (id, name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, hire_date, created_at)
+                (id, name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, hire_date, hire_date_current_year, created_at)
             values (
                 coalesce(nullif(emp->>'id','')::bigint,
                          nextval(pg_get_serial_sequence('public.employees','id'))),
@@ -619,6 +626,7 @@ begin
                 coalesce((emp->>'over_45')::boolean, false),
                 coalesce((emp->>'is_frozen')::boolean, false),
                 coalesce(trim(emp->>'hire_date'),''),
+                coalesce(nullif(emp->>'hire_date_current_year',''), null)::date,
                 coalesce((emp->>'createdAt')::timestamptz, now())
             ) returning id into v_target;
             v_created := v_created + 1;
@@ -631,7 +639,8 @@ begin
                 initial_carried_forward = coalesce((emp->>'initial_carried_forward')::numeric, initial_carried_forward),
                 over_45   = coalesce((emp->>'over_45')::boolean, over_45),
                 is_frozen = coalesce((emp->>'is_frozen')::boolean, is_frozen),
-                hire_date = coalesce(trim(emp->>'hire_date'), hire_date)
+                hire_date = coalesce(trim(emp->>'hire_date'), hire_date),
+                hire_date_current_year = coalesce(nullif(emp->>'hire_date_current_year',''), hire_date_current_year)::date
             where id = v_target;
             v_updated := v_updated + 1;
         end if;

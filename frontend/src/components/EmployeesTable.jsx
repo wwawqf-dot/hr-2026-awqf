@@ -67,7 +67,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                             return years.map((year) => {
                                 const yd = emp.years_data?.[year] || { added: 0, deducted: 0 };
                                 const added = Number(year) === realLibyaYear
-                                    ? getAccruedDays(realLibyaYear, monthlyRate)
+                                    ? getAccruedDays(realLibyaYear, monthlyRate, emp.hire_date_current_year)
                                     : (parseFloat(yd.added) || 0);
                                 const deducted = parseFloat(yd.deducted) || 0;
                                 const closing = +(opening + added - deducted).toFixed(1);

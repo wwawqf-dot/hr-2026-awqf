@@ -25,7 +25,7 @@ export function computeFifoAudit(employee, years, monthlyRate = 2.5) {
     }
     previousCarryOver = Math.max(0, previousCarryOver);
 
-    const accruedDays = getAccruedDays(currentYear, monthlyRate);
+    const accruedDays = getAccruedDays(currentYear, monthlyRate, employee.hire_date_current_year);
     const totalDeducted = parseFloat(employee.years_data?.[currentYear]?.deducted) || 0;
 
     // FIFO: consume previous carry-over first, then current year accrual

@@ -11,7 +11,7 @@ function computeNetCumulative(employee) {
         balance += (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0);
     }
     if (!yearsData[currentYear]) {
-        balance += getAccruedDays(Number(currentYear), monthlyRate);
+        balance += getAccruedDays(Number(currentYear), monthlyRate, employee.hire_date_current_year);
     }
     return balance;
 }
@@ -47,7 +47,7 @@ export function printEmployeeStatement(employee) {
     const prevCarry = computePreviousCarryOver(employee, years);
     const monthlyRate = employee.over_45 ? 3.75 : 2.5;
     const accruedLabel = getAccrualLabel();
-    const accruedDays = getAccruedDays(Number(getLibyaYear()), monthlyRate);
+    const accruedDays = getAccruedDays(Number(getLibyaYear()), monthlyRate, employee.hire_date_current_year);
     const totalDeducted = Object.values(employee.years_data || {}).reduce((sum, yd) => sum + (parseFloat(yd?.deducted) || 0), 0);
     const history = employee.deductions_history || [];
 

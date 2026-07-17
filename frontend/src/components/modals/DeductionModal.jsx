@@ -35,7 +35,7 @@ function computeNetBalance(employee, monthlyRate) {
     }
     // Add dynamic accrual for current year if not yet stored in DB
     if (!yearsData[currentYear]) {
-        balance += getAccruedDays(Number(currentYear), monthlyRate);
+        balance += getAccruedDays(Number(currentYear), monthlyRate, employee.hire_date_current_year);
     }
     return balance;
 }

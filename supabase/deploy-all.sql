@@ -157,6 +157,10 @@ $$;
 alter table public.deductions
     add column if not exists deduction_source text default null;
 
+-- عمود تاريخ المباشرة للمعينين حديثاً (للاحتساب النسبي)
+alter table public.employees
+    add column if not exists hire_date_current_year date default null;
+
 create or replace function public.register_deduction(p_employee_id bigint, p_payload jsonb)
 returns jsonb
 language plpgsql
@@ -172,6 +176,7 @@ declare
     v_prev_carry numeric; v_fifo_source text;
     v_curr_year text; v_curr_month int;
     v_months int; v_monthly_rate numeric; v_dynamic_added numeric;
+    v_hire_date date; v_diff_days int;
     p_start text := nullif(p_payload->>'start', '');
     p_end   text := nullif(p_payload->>'end', '');
     p_holidays numeric := coalesce((p_payload->>'customHolidays')::numeric, 0);
@@ -211,7 +216,12 @@ begin
     v_curr_year := extract(year from now() at time zone 'Africa/Tripoli')::text;
     v_curr_month := extract(month from now() at time zone 'Africa/Tripoli');
     v_monthly_rate := case when emp.over_45 then 3.75 else 2.5 end;
-    if v_year < v_curr_year then v_months := 12; else v_months := greatest(0, v_curr_month - 1); end if;
+    if v_year < v_curr_year then v_months := 12;
+    elsif emp.hire_date_current_year is not null and v_year = v_curr_year then
+        -- Prorated: days from hire_date_current_year to end of previous month
+        v_diff_days := (date_trunc('month', now() at time zone 'Africa/Tripoli') - emp.hire_date_current_year::timestamp);
+        v_months := greatest(0, v_diff_days) / 30.0;
+    else v_months := greatest(0, v_curr_month - 1); end if;
     v_dynamic_added := round((v_months * v_monthly_rate)::numeric, 1);
     -- Balance check (include dynamic accrual if row doesn't exist yet)
     select coalesce(emp.initial_carried_forward, 0) + coalesce(sum(coalesce(added,0) - coalesce(deducted,0)), 0)
@@ -259,6 +269,7 @@ as $$
         'national_id', coalesce(e.national_id, ''), 'job_title', coalesce(e.job_title, ''),
         'initial_carried_forward', e.initial_carried_forward, 'over_45', e.over_45,
         'is_frozen', e.is_frozen, 'hire_date', coalesce(e.hire_date, ''),
+        'hire_date_current_year', e.hire_date_current_year,
         'years_data', coalesce((
             select jsonb_object_agg(ey.year, jsonb_build_object('added', ey.added, 'deducted', ey.deducted))
             from public.employee_years ey where ey.employee_id = e.id

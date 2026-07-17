@@ -126,7 +126,7 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
             let runningOpening = initialCarried;
             ledger.forEach((row) => {
                 const monthlyRate = emp.over_45 ? 3.75 : 2.5;
-                const addedVal = row.year === realLibyaYear ? getAccruedDays(Number(realLibyaYear), monthlyRate) : row.added;
+                const addedVal = row.year === realLibyaYear ? getAccruedDays(Number(realLibyaYear), monthlyRate, emp.hire_date_current_year) : row.added;
                 const closing = runningOpening + addedVal - row.deducted;
                 html += `<td>${runningOpening === 0 ? '0' : runningOpening}</td>
                     <td>${addedVal === 0 ? '-' : addedVal}</td>
@@ -142,7 +142,7 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
             }
             const monthlyRate = emp.over_45 ? 3.75 : 2.5;
             const added = selectedYear === realLibyaYear
-                ? getAccruedDays(Number(realLibyaYear), monthlyRate)
+                ? getAccruedDays(Number(realLibyaYear), monthlyRate, emp.hire_date_current_year)
                 : (parseFloat(emp.years_data[selectedYear]?.added) || 0);
             const deducted = parseFloat(emp.years_data[selectedYear]?.deducted) || 0;
             const net = carriedForSelectedYear + added - deducted;
