@@ -109,7 +109,8 @@ insert into public.settings (key, value) values
 
 -- ---------------------------------------------------------------------
 -- 3. AUTH GLUE — auto-create a profile row for every new auth user.
---    Role/username come from the sign-up metadata; default data_entry.
+--    Role/username come from the sign-up metadata; default viewer
+--    (admin assigns role post-creation via the UI dropdown).
 -- ---------------------------------------------------------------------
 create or replace function public.handle_new_user()
 returns trigger
@@ -122,7 +123,7 @@ begin
     values (
         new.id,
         coalesce(new.raw_user_meta_data->>'username', new.email),
-        coalesce(new.raw_user_meta_data->>'role', 'data_entry')
+        coalesce(new.raw_user_meta_data->>'role', 'viewer')
     )
     on conflict (id) do nothing;
     return new;

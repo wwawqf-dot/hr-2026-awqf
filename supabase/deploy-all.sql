@@ -136,12 +136,18 @@ begin
     values (
         new.id,
         coalesce(new.raw_user_meta_data->>'username', new.email),
-        coalesce(new.raw_user_meta_data->>'role', 'data_entry')
+        coalesce(new.raw_user_meta_data->>'role', 'viewer')
     )
     on conflict (id) do nothing;
     return new;
 end;
 $$;
+
+-- Trigger: sync auth.users → profiles on insert
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+    after insert on auth.users
+    for each row execute function public.handle_new_user();
 
 -- ============================================================
 --  4. دوال رموز الدعوة
