@@ -1,6 +1,5 @@
 import { Fragment, useMemo } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
-import { computeYearlyLedger } from '../utils/leaveCalc';
 import { getLastDayPrevMonthStr, getAccruedDays } from '../utils/libyaTime';
 
 export default function EmployeesTable({ employees, years, onDeduct, onEdit, onDelete }) {
@@ -62,14 +61,21 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                 </thead>
                 <tbody>
                     {sortedEmployees.map((emp, index) => {
-                        const ledger = computeYearlyLedger(emp, years);
                         const monthlyRate = emp.over_45 ? 3.75 : 2.5;
-                        const enrichedLedger = ledger.map((row) => {
-                            if (Number(row.year) === realLibyaYear) {
-                                return { ...row, added: getAccruedDays(realLibyaYear, monthlyRate) };
-                            }
-                            return row;
-                        });
+                        const enrichedLedger = (() => {
+                            let opening = parseFloat(emp.initial_carried_forward) || 0;
+                            return years.map((year) => {
+                                const yd = emp.years_data?.[year] || { added: 0, deducted: 0 };
+                                const added = Number(year) === realLibyaYear
+                                    ? getAccruedDays(realLibyaYear, monthlyRate)
+                                    : (parseFloat(yd.added) || 0);
+                                const deducted = parseFloat(yd.deducted) || 0;
+                                const closing = +(opening + added - deducted).toFixed(1);
+                                const row = { year, opening, added, deducted, closing };
+                                opening = closing;
+                                return row;
+                            });
+                        })();
 
                         return (
                             <tr key={emp.id} style={emp.is_frozen ? { opacity: 0.6 } : undefined}>
