@@ -5,7 +5,6 @@ const ALL_TABS = [
     { key: 'users', label: 'إدارة المستخدمين', icon: 'fa-user-shield', roles: ['admin'] },
     { key: 'audit', label: 'سجل النشاطات', icon: 'fa-clipboard-list', roles: ['admin'] },
     { key: 'settings', label: 'أساسيات النظام', icon: 'fa-sliders-h', roles: ['admin'] },
-    { key: 'regulations', label: 'اللوائح التنظيمية', icon: 'fa-book', roles: ['admin', 'data_entry', 'viewer'] },
 ];
 
 export default function NavTabs({ view, setView, role }) {
