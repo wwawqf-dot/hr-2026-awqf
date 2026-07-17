@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { api } from '../api/client';
 import LoadingSpinner from './LoadingSpinner';
 
 function parseInviteCode(code) {
@@ -50,6 +51,8 @@ export default function RegistrationPortal() {
             });
             if (error) throw error;
             if (!data?.user) throw new Error('تعذر إنشاء الحساب');
+
+            try { await api.consumeInviteCode(urlCode, data.user.id); } catch (_) {}
 
             await supabase.auth.signOut();
             localStorage.clear();
