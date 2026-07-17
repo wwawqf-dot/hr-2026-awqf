@@ -20,7 +20,11 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
         );
     }
 
-    const dateSuffix = getLastDayPrevMonthStr().slice(0, 5);
+    // Full "dd/mm/yyyy" — do NOT truncate. A truncated "dd/mm" silently drops
+    // the year, which is exactly wrong the one week a year that matters:
+    // right after a year flip, when last month's date and this year's date
+    // are in different years (e.g. "31/12/2026" vs "31/01/2027").
+    const accrualDateFull = getLastDayPrevMonthStr();
 
     return (
         <div className="table-container compact-table">
@@ -49,7 +53,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                                         {yn === realLibyaYear ? (
                                             <div className="added-header-stack">
                                                 <span>مضاف {year}</span>
-                                                <span className="added-header-sub">حتى {dateSuffix}</span>
+                                                <span className="added-header-sub">(حتى {accrualDateFull})</span>
                                             </div>
                                         ) : `مضاف ${year}`}
                                     </th>

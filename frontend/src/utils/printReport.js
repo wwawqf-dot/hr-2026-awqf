@@ -109,8 +109,15 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
 
     html += `</tr></thead><tbody>`;
 
+    // Print visibility depends ONLY on is_frozen + include_in_print — never
+    // on is_unpaid_leave (a previous `e.is_unpaid_leave ||` short-circuit
+    // here forced a frozen employee with include_in_print=false back into
+    // the printout whenever they were also on unpaid leave; that flag is an
+    // unrelated balance-calculation concern and must not affect print
+    // visibility). Not-frozen employees always print; a frozen employee
+    // prints only when include_in_print is strictly true.
     const printableEmployees = employees.filter(
-        (e) => e.is_unpaid_leave || !(e.is_frozen && e.include_in_print === false)
+        (e) => !e.is_frozen || e.include_in_print === true
     );
 
     printableEmployees.forEach((emp, index) => {
