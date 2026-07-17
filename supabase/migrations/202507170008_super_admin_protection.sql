@@ -31,8 +31,19 @@ where p.id = u.id and p.email is null;
 
 -- Make email unique + not null after backfill (new rows handled by trigger)
 alter table public.profiles
-    alter column email set not null,
-    add constraint profiles_email_unique unique (email);
+    alter column email set not null;
+
+do $$
+begin
+    if not exists (
+        select 1 from pg_constraint
+        where conname = 'profiles_email_unique'
+        and connamespace = 'public'::regnamespace
+    ) then
+        alter table public.profiles
+            add constraint profiles_email_unique unique (email);
+    end if;
+end $$;
 
 -- ----------------------------------------------------------
 -- 2. Update handle_new_user to store email

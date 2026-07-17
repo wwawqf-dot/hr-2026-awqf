@@ -429,6 +429,26 @@ alter table public.profiles
     alter column email set not null,
     add constraint profiles_email_unique unique (email);
 
+-- Re-define handle_new_user to include email (must come AFTER the column is added)
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+    insert into public.profiles (id, username, role, email)
+    values (
+        new.id,
+        coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
+        coalesce(new.raw_user_meta_data->>'role', 'viewer'),
+        new.email
+    )
+    on conflict (id) do nothing;
+    return new;
+end;
+$$;
+
 -- Super admin email constant
 create or replace function public.super_admin_email()
 returns text
