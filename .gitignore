@@ -1,5 +1,6 @@
 node_modules/
 frontend/dist/
+supabase/.temp/
 
 # Secrets — NEVER commit. Only .env.example (with placeholders) is tracked.
 .env
