@@ -32,7 +32,8 @@
 create table if not exists public.profiles (
     id         uuid primary key references auth.users(id) on delete cascade,
     username   text,
-    role       text not null default 'data_entry' check (role in ('admin','data_entry','viewer')),
+    role       text not null default 'viewer' check (role in ('admin','data_entry','viewer')),
+    email      text not null unique,
     created_at timestamptz not null default now()
 );
 
@@ -119,11 +120,12 @@ security definer
 set search_path = public
 as $$
 begin
-    insert into public.profiles (id, username, role)
+    insert into public.profiles (id, username, role, email)
     values (
         new.id,
-        coalesce(new.raw_user_meta_data->>'username', new.email),
-        coalesce(new.raw_user_meta_data->>'role', 'viewer')
+        coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
+        coalesce(new.raw_user_meta_data->>'role', 'viewer'),
+        new.email
     )
     on conflict (id) do nothing;
     return new;
@@ -149,6 +151,15 @@ security definer
 set search_path = public
 as $$
     select role from public.profiles where id = auth.uid();
+$$;
+
+-- Super admin email constant — hard-coded guard against role downgrade.
+create or replace function public.super_admin_email()
+returns text
+language sql
+immutable
+as $$
+    select 'abdo.shta@gmail.com'::text;
 $$;
 
 -- Internal audit writer. NOT granted to clients, so nobody can forge
@@ -1046,16 +1057,53 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+    v_target_email text;
 begin
-    if not exists (select 1 from auth.users where id = p_id) then
+    if public.current_app_role() != 'admin' then
+        raise exception 'هذه العملية مقصورة على المدير';
+    end if;
+    select email into v_target_email from public.profiles where id = p_id;
+    if not found then
         raise exception 'المستخدم غير موجود';
+    end if;
+    if v_target_email = public.super_admin_email() then
+        raise exception 'لا يمكن حذف المدير الأساسي للنظام';
     end if;
     delete from auth.users where id = p_id;
 end;
 $$;
 
+-- Update user role (with super admin protection)
+create or replace function public.update_user_role(p_user_id uuid, p_new_role text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_target_email text;
+begin
+    if public.current_app_role() != 'admin' then
+        raise exception 'هذه العملية مقصورة على المدير';
+    end if;
+    if p_new_role not in ('admin', 'data_entry', 'viewer') then
+        raise exception 'الصلاحية غير صالحة';
+    end if;
+    select email into v_target_email from public.profiles where id = p_user_id;
+    if not found then
+        raise exception 'المستخدم غير موجود';
+    end if;
+    if v_target_email = public.super_admin_email() then
+        raise exception 'لا يمكن تعديل صلاحية المدير الأساسي للنظام';
+    end if;
+    update public.profiles set role = p_new_role where id = p_user_id;
+end;
+$$;
+
 grant execute on function public.create_auth_user(text, text, text)   to authenticated;
 grant execute on function public.delete_auth_user(uuid)               to authenticated;
+grant execute on function public.update_user_role(uuid, text)         to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 10. INVITE CODES — Admin generates, new users self-register

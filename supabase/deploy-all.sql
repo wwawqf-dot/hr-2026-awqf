@@ -413,6 +413,85 @@ end;
 $$;
 
 -- ============================================================
+--  8. Super Admin protection layer
+-- ============================================================
+
+-- Add email column to profiles for super admin identification
+alter table public.profiles
+    add column if not exists email text default null;
+
+update public.profiles p
+set email = u.email
+from auth.users u
+where p.id = u.id and p.email is null;
+
+alter table public.profiles
+    alter column email set not null,
+    add constraint profiles_email_unique unique (email);
+
+-- Super admin email constant
+create or replace function public.super_admin_email()
+returns text
+language sql
+immutable
+as $$
+    select 'abdo.shta@gmail.com'::text;
+$$;
+
+-- Update delete_auth_user with super admin block
+create or replace function public.delete_auth_user(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_target_email text;
+begin
+    if public.current_app_role() != 'admin' then
+        raise exception 'هذه العملية مقصورة على المدير';
+    end if;
+    select email into v_target_email from public.profiles where id = p_id;
+    if not found then
+        raise exception 'المستخدم غير موجود';
+    end if;
+    if v_target_email = public.super_admin_email() then
+        raise exception 'لا يمكن حذف المدير الأساسي للنظام';
+    end if;
+    delete from auth.users where id = p_id;
+end;
+$$;
+
+-- update_user_role RPC with super admin protection
+create or replace function public.update_user_role(p_user_id uuid, p_new_role text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_target_email text;
+begin
+    if public.current_app_role() != 'admin' then
+        raise exception 'هذه العملية مقصورة على المدير';
+    end if;
+    if p_new_role not in ('admin', 'data_entry', 'viewer') then
+        raise exception 'الصلاحية غير صالحة';
+    end if;
+    select email into v_target_email from public.profiles where id = p_user_id;
+    if not found then
+        raise exception 'المستخدم غير موجود';
+    end if;
+    if v_target_email = public.super_admin_email() then
+        raise exception 'لا يمكن تعديل صلاحية المدير الأساسي للنظام';
+    end if;
+    update public.profiles set role = p_new_role where id = p_user_id;
+end;
+$$;
+
+grant execute on function public.update_user_role(uuid, text) to authenticated;
+
+-- ============================================================
 --  تم الانتهاء من النشر
 --  تحقق من absence of errors في الأسفل
 -- ============================================================

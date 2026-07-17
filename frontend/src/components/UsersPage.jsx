@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../supabaseClient';
 import { api } from '../api/client';
 import PageHeader from './PageHeader';
 import LoadingSpinner from './LoadingSpinner';
 import { TableSkeleton } from './SkeletonLoader';
 import CustomConfirmModal from './modals/CustomConfirmModal';
 
+const SUPER_ADMIN_EMAIL = 'abdo.shta@gmail.com';
 const ROLE_LABELS = { admin: 'مدير النظام', data_entry: 'مُدخل بيانات', viewer: 'متابع' };
+const ROLE_OPTIONS = [
+    { value: 'viewer', label: 'متابع', color: '#c4b5fd' },
+    { value: 'data_entry', label: 'مُدخل بيانات', color: '#93c5fd' },
+    { value: 'admin', label: 'مدير النظام', color: '#34d399' },
+];
 
 function Toast({ type, message, onClose }) {
     const colors = {
@@ -38,6 +43,7 @@ export default function UsersPage() {
     const [toast, setToast] = useState(null);
     const [confirmUser, setConfirmUser] = useState(null);
     const [deleteBusy, setDeleteBusy] = useState(false);
+    const [showUuid, setShowUuid] = useState(false);
 
     async function loadUsers() {
         setLoading(true);
@@ -54,7 +60,12 @@ export default function UsersPage() {
 
     useEffect(() => { loadUsers(); }, []);
 
+    function isSuperAdmin(user) {
+        return user.email === SUPER_ADMIN_EMAIL;
+    }
+
     function handleDeleteUser(user) {
+        if (isSuperAdmin(user)) return;
         setConfirmUser(user);
     }
 
@@ -75,16 +86,18 @@ export default function UsersPage() {
 
     async function handleRoleChange(userId, newRole) {
         const prev = users.find((u) => u.id === userId);
+        if (isSuperAdmin(prev)) return;
         setUsers((prevList) => prevList.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
         try {
-            const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
-            if (error) throw error;
+            await api.updateUserRole(userId, newRole);
             setToast({ type: 'success', message: 'تم تحديث الصلاحية بنجاح' });
         } catch (err) {
             setUsers((prevList) => prevList.map((u) => (u.id === userId ? { ...u, role: prev.role } : u)));
             setToast({ type: 'error', message: err.message || 'تعذر تحديث الصلاحية' });
         }
     }
+
+    const colSpan = showUuid ? 5 : 4;
 
     return (
         <>
@@ -128,6 +141,20 @@ export default function UsersPage() {
                         border: '1px solid rgba(96,165,250,0.2)', borderRadius: 20,
                         padding: '0.15rem 0.7rem', fontSize: '0.78rem', color: '#93c5fd',
                     }}>{users.length} مستخدم</span>
+
+                    {/* UUID toggle */}
+                    <button type="button" onClick={() => setShowUuid((v) => !v)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                            background: showUuid ? 'rgba(139,92,246,0.12)' : 'rgba(255,255,255,0.04)',
+                            border: showUuid ? '1px solid rgba(139,92,246,0.25)' : '1px solid rgba(255,255,255,0.08)',
+                            borderRadius: 8, padding: '0.35rem 0.75rem', fontSize: '0.78rem',
+                            color: showUuid ? '#c4b5fd' : 'var(--text-muted)', fontWeight: 600,
+                            transition: 'all 0.2s', fontFamily: 'inherit',
+                        }}>
+                        <i className={`fas fa-${showUuid ? 'eye' : 'eye-slash'}`} style={{ fontSize: 13 }}></i>
+                        {showUuid ? 'إخفاء UUID' : 'إظهار UUID'}
+                    </button>
                 </div>
 
                 {error && <div className="form-error">{error}</div>}
@@ -135,56 +162,87 @@ export default function UsersPage() {
                     <div className="table-container" style={{ maxHeight: 'none' }}>
                         <table>
                             <thead><tr>
-                                <th>اسم المستخدم</th><th>الصلاحية</th><th>تاريخ الإنشاء</th>
+                                <th>اسم المستخدم</th>
+                                {showUuid && <th style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>الرمز (UUID)</th>}
+                                <th>الصلاحية</th>
+                                <th>تاريخ الإنشاء</th>
                                 <th style={{ textAlign: 'center' }}>الإجراءات</th>
                             </tr></thead>
                             <tbody>
                                 {users.length === 0 ? (
-                                    <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا يوجد مستخدمون بعد</td></tr>
+                                    <tr><td colSpan={colSpan} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا يوجد مستخدمون بعد</td></tr>
                                 ) : users.map((u) => {
-                                    const isCurrentUser = u.role === 'admin' && users.filter(x => x.role === 'admin').length === 1;
+                                    const isRoot = isSuperAdmin(u);
                                     return (
                                         <tr key={u.id}>
-                                            <td style={{ fontWeight: 600 }}>{u.username}</td>
-                                            <td>
-                                                <select
-                                                    value={u.role}
-                                                    onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                                                    style={{
-                                                        minHeight: 36, fontSize: '0.82rem', borderRadius: 8,
-                                                        padding: '0.2rem 0.5rem', minWidth: 120,
-                                                        background: u.role === 'admin'
-                                                            ? 'rgba(16,185,129,0.1)'
-                                                            : u.role === 'data_entry'
-                                                                ? 'rgba(96,165,250,0.08)'
-                                                                : 'rgba(168,85,247,0.08)',
-                                                        border: u.role === 'admin'
-                                                            ? '1px solid rgba(16,185,129,0.25)'
-                                                            : u.role === 'data_entry'
-                                                                ? '1px solid rgba(96,165,250,0.2)'
-                                                                : '1px solid rgba(168,85,247,0.2)',
-                                                        color: u.role === 'admin'
-                                                            ? '#34d399'
-                                                            : u.role === 'data_entry'
-                                                                ? '#93c5fd'
-                                                                : '#c4b5fd',
-                                                        fontWeight: 700, cursor: 'pointer',
-                                                    }}
-                                                >
-                                                    <option value="viewer" style={{ color: '#c4b5fd', background: '#1e1b2e' }}>متابع</option>
-                                                    <option value="data_entry" style={{ color: '#93c5fd', background: '#1e1b2e' }}>مُدخل بيانات</option>
-                                                    <option value="admin" style={{ color: '#34d399', background: '#1e1b2e' }}>مدير النظام</option>
-                                                </select>
+                                            <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                                {u.username}
+                                                <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400, direction: 'ltr' }}>{u.email}</span>
                                             </td>
-                                            <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{new Date(u.createdAt).toLocaleDateString('ar-LY')}</td>
+                                            {showUuid && (
+                                                <td style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: 'var(--text-muted)', direction: 'ltr', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    {u.id}
+                                                </td>
+                                            )}
+                                            <td>
+                                                {isRoot ? (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                                                        background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)',
+                                                        borderRadius: 8, padding: '0.35rem 0.8rem',
+                                                        color: '#34d399', fontWeight: 800, fontSize: '0.82rem',
+                                                    }}>
+                                                        <i className="fas fa-crown" style={{ fontSize: 14 }}></i>
+                                                        مدير نظام أساسي
+                                                    </span>
+                                                ) : (
+                                                    <select
+                                                        value={u.role}
+                                                        onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                                                        style={{
+                                                            minHeight: 36, fontSize: '0.82rem', borderRadius: 8,
+                                                            padding: '0.2rem 0.5rem', minWidth: 120,
+                                                            background: u.role === 'admin'
+                                                                ? 'rgba(16,185,129,0.1)'
+                                                                : u.role === 'data_entry'
+                                                                    ? 'rgba(96,165,250,0.08)'
+                                                                    : 'rgba(168,85,247,0.08)',
+                                                            border: u.role === 'admin'
+                                                                ? '1px solid rgba(16,185,129,0.25)'
+                                                                : u.role === 'data_entry'
+                                                                    ? '1px solid rgba(96,165,250,0.2)'
+                                                                    : '1px solid rgba(168,85,247,0.2)',
+                                                            color: u.role === 'admin'
+                                                                ? '#34d399'
+                                                                : u.role === 'data_entry'
+                                                                    ? '#93c5fd'
+                                                                    : '#c4b5fd',
+                                                            fontWeight: 700, cursor: 'pointer',
+                                                        }}
+                                                    >
+                                                        {ROLE_OPTIONS.map((opt) => (
+                                                            <option key={opt.value} value={opt.value} style={{ color: opt.color, background: '#1e1b2e' }}>
+                                                                {opt.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                )}
+                                            </td>
+                                            <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                                                {new Date(u.createdAt).toLocaleDateString('ar-LY')}
+                                            </td>
                                             <td style={{ textAlign: 'center' }}>
-                                                {u.role !== 'admin' ? (
+                                                {!isRoot ? (
                                                     <button type="button" className="btn btn-danger-outline btn-icon-text"
                                                         onClick={() => handleDeleteUser(u)}>
                                                         <i className="fas fa-trash"></i> حذف
                                                     </button>
                                                 ) : (
-                                                    <span style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 6, padding: '0.25rem 0.7rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                                    <span style={{
+                                                        background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)',
+                                                        borderRadius: 6, padding: '0.25rem 0.7rem',
+                                                        color: 'var(--text-muted)', fontSize: '0.8rem',
+                                                    }}>
                                                         <i className="fas fa-shield-halved" style={{ color: '#10b981', marginLeft: 4 }}></i>رئيسي
                                                     </span>
                                                 )}

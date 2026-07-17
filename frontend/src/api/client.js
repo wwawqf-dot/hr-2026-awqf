@@ -169,24 +169,21 @@ export const api = {
     // ---- Users (admin CRUD via SECURITY DEFINER RPCs) --------------------
     getUsers: async () => {
         const rows = await safeSupabase(
-            supabase.from('profiles').select('id, username, role, created_at').order('created_at')
+            supabase.from('profiles').select('id, username, role, email, created_at').order('created_at')
         );
         return {
             users: (rows || []).map((u) => ({
                 id: u.id,
                 username: u.username || '',
                 role: u.role,
+                email: u.email || '',
                 createdAt: u.created_at,
             })),
         };
     },
-    addUser: async (email, password, role) => {
-        const data = await rpc('create_auth_user', {
-            p_email: email,
-            p_password: password,
-            p_role: role,
-        });
-        return { id: data.id, email: data.email, role: data.role };
+    updateUserRole: async (userId, newRole) => {
+        await rpc('update_user_role', { p_user_id: userId, p_new_role: newRole });
+        return { message: 'تم تحديث الصلاحية' };
     },
     deleteUser: async (id) => {
         await rpc('delete_auth_user', { p_id: id });
