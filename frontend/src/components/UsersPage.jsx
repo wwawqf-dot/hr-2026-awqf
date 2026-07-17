@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import PageHeader from './PageHeader';
 import LoadingSpinner from './LoadingSpinner';
 import { TableSkeleton } from './SkeletonLoader';
+import CustomConfirmModal from './modals/CustomConfirmModal';
 
 function Toast({ type, message, onClose }) {
     const colors = {
@@ -39,6 +40,15 @@ export default function UsersPage() {
     const [inviteRole, setInviteRole] = useState('data_entry');
     const [generating, setGenerating] = useState(false);
     const [generatedCode, setGeneratedCode] = useState('');
+
+    const [showAddUser, setShowAddUser] = useState(false);
+    const [newEmail, setNewEmail] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [newRole, setNewRole] = useState('data_entry');
+    const [addUserBusy, setAddUserBusy] = useState(false);
+
+    const [confirmUser, setConfirmUser] = useState(null);
+    const [deleteBusy, setDeleteBusy] = useState(false);
 
     async function loadUsers() {
         setLoading(true);
@@ -89,12 +99,47 @@ export default function UsersPage() {
         });
     }
 
+    async function handleAddUser(e) {
+        e.preventDefault();
+        setAddUserBusy(true);
+        try {
+            await api.addUser(newEmail.trim(), newPassword, newRole);
+            setToast({ type: 'success', message: `تم إنشاء المستخدم ${newEmail} بنجاح` });
+            setNewEmail(''); setNewPassword(''); setNewRole('data_entry');
+            setShowAddUser(false);
+            await loadUsers();
+        } catch (err) {
+            setToast({ type: 'error', message: err.message || 'تعذر إنشاء المستخدم' });
+        } finally {
+            setAddUserBusy(false);
+        }
+    }
+
+    function handleDeleteUser(user) {
+        setConfirmUser(user);
+    }
+
+    async function confirmDeleteUser() {
+        setDeleteBusy(true);
+        try {
+            await api.deleteUser(confirmUser.id);
+            setConfirmUser(null);
+            setToast({ type: 'success', message: `تم حذف المستخدم "${confirmUser.username}" بنجاح` });
+            await loadUsers();
+        } catch (err) {
+            setConfirmUser(null);
+            setToast({ type: 'error', message: err.message || 'تعذر حذف المستخدم' });
+        } finally {
+            setDeleteBusy(false);
+        }
+    }
+
     return (
         <>
             <PageHeader />
             {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
 
-            {/* Generate Invite Card */}
+            {/* Invite Code Generator */}
             <div className="panel" style={{
                 maxWidth: 680, margin: '0 auto 24px', padding: '2rem 2.2rem', borderRadius: 16,
             }}>
@@ -202,17 +247,54 @@ export default function UsersPage() {
                         border: '1px solid rgba(96,165,250,0.2)', borderRadius: 20,
                         padding: '0.15rem 0.7rem', fontSize: '0.78rem', color: '#93c5fd',
                     }}>{users.length} مستخدم</span>
+                    <button type="button" className="btn btn-primary" onClick={() => setShowAddUser(!showAddUser)}
+                        style={{ minHeight: 40, fontSize: '0.82rem', borderRadius: 10, gap: 6 }}>
+                        <i className="fas fa-user-plus"></i> {showAddUser ? 'إلغاء' : 'إضافة مستخدم'}
+                    </button>
                 </div>
+
+                {showAddUser && (
+                    <form onSubmit={handleAddUser} style={{
+                        padding: '1.25rem', marginBottom: 20,
+                        background: 'rgba(96,165,250,0.04)', border: '1px solid rgba(96,165,250,0.15)',
+                        borderRadius: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end',
+                    }}>
+                        <div className="form-group" style={{ margin: 0, flex: 2, minWidth: 200 }}>
+                            <label style={{ fontSize: '0.82rem', marginBottom: 4 }}>البريد الإلكتروني</label>
+                            <input type="email" required value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                                placeholder="user@example.com" style={{ minHeight: 44 }} />
+                        </div>
+                        <div className="form-group" style={{ margin: 0, flex: 1, minWidth: 140 }}>
+                            <label style={{ fontSize: '0.82rem', marginBottom: 4 }}>كلمة المرور</label>
+                            <input type="password" required value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                                placeholder="******" style={{ minHeight: 44 }} />
+                        </div>
+                        <div className="form-group" style={{ margin: 0, minWidth: 120 }}>
+                            <label style={{ fontSize: '0.82rem', marginBottom: 4 }}>الصلاحية</label>
+                            <select value={newRole} onChange={e => setNewRole(e.target.value)} style={{ minHeight: 44 }}>
+                                <option value="data_entry">مُدخل بيانات</option>
+                                <option value="viewer">متابع</option>
+                            </select>
+                        </div>
+                        <button type="submit" className="btn btn-primary" disabled={addUserBusy}
+                            style={{ minHeight: 44, minWidth: 100, justifyContent: 'center', borderRadius: 10 }}>
+                            {addUserBusy && <LoadingSpinner size={16} color="#fff" style={{ marginLeft: 6 }} />}
+                            <i className="fas fa-check"></i> إنشاء
+                        </button>
+                    </form>
+                )}
+
                 {error && <div className="form-error">{error}</div>}
                 {loading ? <TableSkeleton rows={4} cols={4} /> : (
                     <div className="table-container" style={{ maxHeight: 'none' }}>
                         <table>
                             <thead><tr>
                                 <th>اسم المستخدم</th><th>الصلاحية</th><th>تاريخ الإنشاء</th>
+                                <th style={{ textAlign: 'center' }}>الإجراءات</th>
                             </tr></thead>
                             <tbody>
                                 {users.length === 0 ? (
-                                    <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا يوجد مستخدمون بعد</td></tr>
+                                    <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>لا يوجد مستخدمون بعد</td></tr>
                                 ) : users.map((u) => (
                                     <tr key={u.id}>
                                         <td style={{ fontWeight: 600 }}>{u.username}</td>
@@ -220,6 +302,18 @@ export default function UsersPage() {
                                             {u.role === 'admin' ? 'مدير النظام' : u.role === 'viewer' ? 'متابع' : 'مُدخل بيانات'}
                                         </span></td>
                                         <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{new Date(u.createdAt).toLocaleDateString('ar-LY')}</td>
+                                        <td style={{ textAlign: 'center' }}>
+                                            {u.role !== 'admin' ? (
+                                                <button type="button" className="btn btn-danger-outline btn-icon-text"
+                                                    onClick={() => handleDeleteUser(u)}>
+                                                    <i className="fas fa-trash"></i> حذف
+                                                </button>
+                                            ) : (
+                                                <span style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 6, padding: '0.25rem 0.7rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                                    <i className="fas fa-shield-halved" style={{ color: '#10b981', marginLeft: 4 }}></i>رئيسي
+                                                </span>
+                                            )}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -227,6 +321,18 @@ export default function UsersPage() {
                     </div>
                 )}
             </div>
+
+            {confirmUser && (
+                <CustomConfirmModal
+                    title="حذف مستخدم"
+                    message={`هل أنت متأكد من حذف المستخدم "${confirmUser.username}"؟\nسيتم حذف الحساب نهائياً ولا يمكن التراجع.`}
+                    confirmLabel="نعم، احذف المستخدم"
+                    cancelLabel="إلغاء"
+                    busy={deleteBusy}
+                    onConfirm={confirmDeleteUser}
+                    onCancel={() => setConfirmUser(null)}
+                />
+            )}
         </>
     );
 }
