@@ -99,9 +99,14 @@ export function printEmployeeStatement(employee) {
                 @page { margin: 12mm; size: A4 portrait; }
                 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 0; }
                 .no-print { display: none; }
-                .print-hide { display: none !important; }
-                table { box-sizing: border-box !important; border-collapse: collapse !important; width: 98% !important; margin: 0 auto !important; border: 2px solid #000 !important; }
+                /* The deductions table + notes section must stay VISIBLE and
+                   paginate normally on print — only the on-screen "print now"
+                   button (.no-print, above) is hidden. */
+                table { box-sizing: border-box !important; border-collapse: collapse !important; width: 98% !important; margin: 0 auto !important; border: 2px solid #000 !important; page-break-inside: auto !important; }
+                tr { page-break-inside: avoid !important; }
                 th, td { border: 1px solid #000 !important; padding: 8px !important; }
+                .statement-note { page-break-inside: avoid !important; }
+                .signatures { page-break-inside: avoid !important; }
             }
         </style>
     </head>
@@ -134,7 +139,7 @@ export function printEmployeeStatement(employee) {
             <div class="summary-card">الصافي التراكمي الحالي<span class="val green">${netCumulative}</span></div>
         </div>
 
-        <div class="print-hide">
+        <div class="statement-body">
             <table>
                 <thead>
                     <tr>
@@ -155,7 +160,7 @@ export function printEmployeeStatement(employee) {
 
         <div class="signatures">
             <div class="sig-block"><p class="sig-role">إعداد</p><div class="sig-space"></div><p class="sig-title">وحدة شؤون الموظفين</p></div>
-            <div class="sig-block"><p class="sig-role">مراجعة</p><div class="sig-space"></div><p class="sig-title">رئيس قسم الشؤون الإدارية</p></div>
+            <div class="sig-block"><p class="sig-role">اعتماد</p><div class="sig-space"></div><p class="sig-title">&nbsp;</p></div>
             <div class="sig-block"><p class="sig-role">اعتماد</p><div class="sig-space"></div><p class="sig-title">مدير مكتب أوقاف القره بوللي</p></div>
         </div>
 

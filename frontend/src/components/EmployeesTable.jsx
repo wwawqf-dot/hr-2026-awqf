@@ -73,6 +73,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                                         {emp.name}{' '}
                                         {emp.over_45 && <span className="tag-warning">+45 سنة</span>}
                                         {emp.is_frozen && <span className="tag-danger">مُجمّد</span>}
+                                        {emp.is_unpaid_leave && <span className="tag-unpaid" title="إجازة بدون مرتب — الرصيد مجمّد">إجازة بدون مرتب</span>}
                                     </div>
                                     <div className="emp-job-row">{emp.job_number || '-'}</div>
                                 </td>

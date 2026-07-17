@@ -4,7 +4,6 @@ import PageHeader from './PageHeader';
 import LoadingSpinner from './LoadingSpinner';
 import { TableSkeleton } from './SkeletonLoader';
 import ConfirmDangerModal from './modals/ConfirmDangerModal';
-import { parseEmployeesExcel } from '../utils/parseEmployeesExcel';
 import { getLibyaDateStr, getLibyaYear } from '../utils/libyaTime';
 
 // Structural validation of an imported backup file, run BEFORE anything is
@@ -47,7 +46,7 @@ function validateBackupPayload(parsed) {
 export default function SettingsPage() {
     const {
         years, settings, loading, error, addYear, deleteYear, updateSettings,
-        exportBackup, serverBackup, importBackup, deleteAllRecords, bulkAddEmployees,
+        exportBackup, importBackup, deleteAllRecords,
     } = useLeaveData();
 
 
@@ -60,20 +59,10 @@ export default function SettingsPage() {
 
     const [backupError, setBackupError] = useState('');
     const [backupSuccess, setBackupSuccess] = useState('');
-    const [serverBackingUp, setServerBackingUp] = useState(false);
     const [exporting, setExporting] = useState(false);
     const [importing, setImporting] = useState(false);
     const [showDangerModal, setShowDangerModal] = useState(false);
     const fileInputRef = useRef(null);
-
-    const [excelError, setExcelError] = useState('');
-    const [excelSuccess, setExcelSuccess] = useState('');
-    const [importingExcel, setImportingExcel] = useState(false);
-    const excelInputRef = useRef(null);
-
-
-
-
     async function handleAddYear(e) {
         e.preventDefault();
         setYearError('');
@@ -154,20 +143,6 @@ export default function SettingsPage() {
         }
     }
 
-    async function handleServerBackup() {
-        setBackupError('');
-        setBackupSuccess('');
-        setServerBackingUp(true);
-        try {
-            const result = await serverBackup();
-            setBackupSuccess(result.message || 'تم إنشاء نسخة احتياطية في الخادم بنجاح.');
-        } catch (err) {
-            setBackupError(err.message || 'تعذر إنشاء النسخة الاحتياطية في الخادم');
-        } finally {
-            setServerBackingUp(false);
-        }
-    }
-
     async function handleImportFile(e) {
         const file = e.target.files[0];
         e.target.value = '';
@@ -206,43 +181,6 @@ export default function SettingsPage() {
             setBackupError(err.message || 'تعذر استيراد الملف');
         } finally {
             setImporting(false);
-        }
-    }
-
-    async function handleExcelFile(e) {
-        const file = e.target.files[0];
-        e.target.value = '';
-        if (!file) return;
-        setExcelError('');
-        setExcelSuccess('');
-
-        let rows;
-        try {
-            rows = await parseEmployeesExcel(file);
-        } catch (err) {
-            setExcelError(err.message || 'تعذر قراءة الملف');
-            return;
-        }
-
-        if (
-            !window.confirm(
-                `تم العثور على ${rows.length} صف في الملف. سيتم إضافتهم كموظفين جدد بالإعدادات الافتراضية (يمكن تعديل بياناتهم لاحقاً).\nهل تريد المتابعة؟`
-            )
-        ) {
-            return;
-        }
-
-        setImportingExcel(true);
-        try {
-            const result = await bulkAddEmployees(rows);
-            const extras = [];
-            if (result.skipped) extras.push(`تم تخطي ${result.skipped} صف بدون اسم`);
-            if (result.reconciled) extras.push(`تمت تسوية جرد ورقي لـ ${result.reconciled} موظف`);
-            setExcelSuccess(`تم استيراد ${result.created} موظف بنجاح${extras.length ? ` (${extras.join('، ')})` : ''}.`);
-        } catch (err) {
-            setExcelError(err.message || 'تعذر استيراد الملف');
-        } finally {
-            setImportingExcel(false);
         }
     }
 
@@ -331,51 +269,6 @@ export default function SettingsPage() {
             </div>
 
             <div className="panel">
-                <h2><i className="fas fa-file-excel"></i> استيراد موظفين بالجملة</h2>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '1.25rem' }}>
-                    ارفع ملف Excel أو CSV يحتوي على الأعمدة التالية بالضبط في الصف الأول: <code>name</code>،{' '}
-                    <code>national_id</code>، <code>job_title</code>. سيتم إدراج كل صف كموظف جديد بالأرصدة
-                    الافتراضية، ويمكن تعديل بياناته لاحقاً من صفحة الموظفين.
-                    <br />
-                    يمكن أيضاً إضافة عمود اختياري باسم <code style={{ direction: 'rtl' }}>الرقم الوظيفي</code>{' '}
-                    لتعبئة الرقم الوظيفي لكل موظف تلقائياً.
-                    <br />
-                    وعمود اختياري آخر باسم <code style={{ direction: 'rtl' }}>الرصيد المتبقي</code>{' '}
-                    — إن وُجد رقم في هذا العمود لأي موظف، سيقوم النظام تلقائياً بتسجيل الفرق كخصم
-                    "تسوية جرد ورقي" في سجل خصوماته.
-                </p>
-                {excelError && <div className="form-error">{excelError}</div>}
-                {excelSuccess && (
-                    <div
-                        className="form-error"
-                        style={{
-                            background: 'rgba(16, 185, 129, 0.1)',
-                            borderColor: 'rgba(16, 185, 129, 0.35)',
-                            color: 'var(--emerald)',
-                        }}
-                    >
-                        {excelSuccess}
-                    </div>
-                )}
-                <button
-                    type="button"
-                    className="btn btn-outline"
-                    onClick={() => excelInputRef.current?.click()}
-                    disabled={importingExcel}
-                >
-                    {importingExcel && <LoadingSpinner size={16} color="#10b981" style={{ marginLeft: 8 }} />}
-                    <i className="fas fa-file-excel"></i> {importingExcel ? 'جاري الاستيراد...' : 'استيراد موظفين من Excel'}
-                </button>
-                <input
-                    ref={excelInputRef}
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    style={{ display: 'none' }}
-                    onChange={handleExcelFile}
-                />
-            </div>
-
-            <div className="panel">
                 <h2><i className="fas fa-database"></i> النسخ الاحتياطي والاستعادة</h2>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '1.25rem' }}>
                     احفظ نسخة كاملة من بيانات الموظفين والسنوات المالية والإعدادات، أو استورد نسخة سابقة لتحل محل
@@ -397,11 +290,7 @@ export default function SettingsPage() {
                 <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
                     <button className="btn btn-outline" onClick={handleExport} disabled={exporting}>
                         {exporting && <LoadingSpinner size={16} color="#10b981" style={{ marginLeft: 8 }} />}
-                        <i className="fas fa-file-export"></i> {exporting ? 'جاري التصدير...' : 'حفظ نسخة تصدير'}
-                    </button>
-                    <button className="btn btn-outline" onClick={handleServerBackup} disabled={serverBackingUp}>
-                        {serverBackingUp && <LoadingSpinner size={16} color="#10b981" style={{ marginLeft: 8 }} />}
-                        <i className="fas fa-server"></i> {serverBackingUp ? 'جاري الحفظ...' : 'إنشاء نسخة احتياطية في الخادم'}
+                        <i className="fas fa-file-export"></i> {exporting ? 'جاري التصدير...' : 'تصدير نسخة احتياطية'}
                     </button>
                     <button
                         type="button"
@@ -410,7 +299,7 @@ export default function SettingsPage() {
                         disabled={importing}
                     >
                         {importing && <LoadingSpinner size={16} color="#f59e0b" style={{ marginLeft: 8 }} />}
-                        <i className="fas fa-file-import"></i> {importing ? 'جاري الاستيراد...' : 'استيراد نسخة'}
+                        <i className="fas fa-file-import"></i> {importing ? 'جاري الاستيراد...' : 'استيراد نسخة احتياطية'}
                     </button>
                     <input
                         ref={fileInputRef}
