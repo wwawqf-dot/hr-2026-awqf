@@ -96,12 +96,6 @@ export function useLeaveData(enabled = true) {
         return data.employee;
     }
 
-    async function bulkAddEmployees(rows) {
-        const data = await api.bulkAddEmployees(rows);
-        await refresh();
-        return data;
-    }
-
     async function addYear(payload) {
         const data = await api.addYear(payload);
         setYears(data.years);
@@ -138,10 +132,6 @@ export function useLeaveData(enabled = true) {
         return api.exportBackup();
     }
 
-    async function serverBackup() {
-        return api.serverBackup();
-    }
-
     async function importBackup(payload) {
         const data = await api.importBackup(payload);
         await refresh();
@@ -160,14 +150,12 @@ export function useLeaveData(enabled = true) {
         settings,
         loading,
         error,
-        refresh,
         addEmployee,
         updateEmployee,
         deleteEmployee,
         getArchivedEmployees,
         restoreEmployee,
         toggleFreeze,
-        bulkAddEmployees,
         addYear,
         deleteYear,
         getArchivedYears,
@@ -176,7 +164,6 @@ export function useLeaveData(enabled = true) {
         addDeduction,
         deleteDeduction,
         exportBackup,
-        serverBackup,
         importBackup,
         deleteAllRecords,
     };

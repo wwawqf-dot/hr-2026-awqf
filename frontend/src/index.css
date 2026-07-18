@@ -276,7 +276,7 @@ th {
     color: var(--text-main); font-weight: 700; font-size: 0.95rem; border-left: 1px solid var(--table-border);
 }
 
-.fixed-header { color: #60a5fa; text-align: center !important; }
+
 .year-group-header {
     text-align: center; color: var(--emerald); font-weight: 800; border-bottom: 2px solid var(--emerald);
 }
@@ -329,13 +329,6 @@ tbody tr:hover { background: rgba(16, 185, 129, 0.05); }
 .added-header-stack { display: flex; flex-direction: column; align-items: center; line-height: 1.3; }
 .added-header-sub { font-size: 0.75em; color: var(--text-muted); font-weight: 400; }
 .btn-sm { padding: 0.45rem 0.85rem; font-size: 0.82rem; }
-
-/* FIFO balance bar in DeductionModal */
-.fifo-balance-bar { display: flex; flex-wrap: wrap; gap: 8px 20px; background: rgba(96,165,250,0.04); border: 1px solid rgba(96,165,250,0.15); border-radius: 8px; padding: 0.6rem 1rem; margin-bottom: 1rem; font-size: 0.82rem; }
-.fifo-balance-bar span { display: inline-flex; align-items: center; gap: 4px; color: var(--text-muted); }
-.fifo-balance-bar i { color: #60a5fa; font-size: 0.7rem; }
-.fifo-balance-bar b { font-weight: 700; color: var(--text-main); }
-.fifo-balance-bar .text-emerald { color: #10b981; font-size: 1rem; }
 
 .fifo-split-preview { background: rgba(245,158,11,0.04); border: 1px dashed rgba(245,158,11,0.3); border-radius: 8px; padding: 0.6rem 1rem; margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 12px 24px; }
 .fifo-split-item { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
@@ -543,44 +536,6 @@ code {
     border-bottom: 1px dashed var(--table-border);
 }
 .inline-form .form-group { margin-bottom: 0; flex: 1; min-width: 180px; }
-
-/* ---------- Settings page ---------- */
-.years-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-}
-.year-chip {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    background: rgba(16, 185, 129, 0.06);
-    border: 1px solid rgba(16, 185, 129, 0.25);
-    color: var(--emerald);
-    font-weight: 700;
-    font-size: 1rem;
-    padding: 0.6rem 0.6rem 0.6rem 1rem;
-    border-radius: 999px;
-}
-.year-chip button {
-    background: none;
-    border: none;
-    color: var(--danger);
-    cursor: pointer;
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: var(--transition-smooth);
-}
-.year-chip button:hover { background: rgba(239, 68, 68, 0.15); }
-.settings-hint {
-    color: var(--text-muted);
-    font-size: 0.85rem;
-    margin-top: 0.5rem;
-}
 
 /* ---------- Regulations page ---------- */
 .regulations-grid {
@@ -831,9 +786,6 @@ code {
 
     /* User management: glassmorphism form panel */
     .panel[style*="max-width: 600px"] { margin: 0 0 16px !important; }
-
-    /* Settings: year chips wrap better */
-    .year-chip { font-size: 0.85rem; padding: 0.4rem 0.4rem 0.4rem 0.8rem; }
 
     /* Print report modal: year selector dropdown fits */
     .modal select[style*="min-width: 180px"] { min-width: 100% !important; }

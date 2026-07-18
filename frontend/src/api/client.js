@@ -142,8 +142,6 @@ export const api = {
     restoreEmployee: (id) => rpc('restore_employee', { p_id: id }),
     getArchivedEmployees: () => rpc('list_archived_employees'),
     toggleFreeze: (id, includeInPrint = true) => rpc('toggle_employee_freeze', { p_id: id, p_include_in_print: includeInPrint }),
-    bulkAddEmployees: (rows, reconciliationNote = 'تسوية جرد ورقي') =>
-        rpc('bulk_add_employees', { p_rows: rows, p_note: reconciliationNote }),
 
     // ---- Financial years ---------------------------------------------
     getYears: () => listYears(),
@@ -314,10 +312,6 @@ export const api = {
             message: `تمت المزامنة: ${result.created} جديد، ${result.updated} تحديث، ${result.deductions} خصم`,
             ...result,
         };
-    },
-    serverBackup: async () => {
-        await rpc('export_all');
-        return { message: 'قاعدة البيانات على Supabase تُنسخ احتياطياً تلقائياً. استخدم "تصدير JSON" لأخذ نسخة محلية.' };
     },
     // Deliberately still a real, irreversible hard delete (the danger-zone
     // full wipe) — routed through a SECURITY DEFINER RPC now, since a raw

@@ -64,7 +64,6 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
     }, [employee.id]);
 
     const hasUnknownDays = unknownDays !== '' && Number(unknownDays) > 0;
-    const hasDates = Boolean(start || end);
     const days = hasUnknownDays ? Number(unknownDays) : calculateDeductionDays(start, end, holidays);
 
     const netBalance = computeNetBalance(employee, monthlyRate);
@@ -227,7 +226,7 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
                     </div>
 
                     {/* FIFO split preview */}
-                    {fifoPreview && days > 0 && days <= netBalance && (
+                    {fifoPreview && days <= netBalance && (
                         <div className="fifo-split-preview">
                             <div className="fifo-split-item">
                                 <span className="fifo-split-label">يُخصم من الرصيد المرحّل:</span>

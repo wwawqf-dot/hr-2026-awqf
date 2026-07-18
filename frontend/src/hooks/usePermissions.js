@@ -18,8 +18,5 @@ export function usePermissions() {
         canDelete: gte(role, 'admin'),
         canFreeze: gte(role, 'admin'),
         canEdit: gte(role, 'admin'),
-        canManageUsers: gte(role, 'admin'),
-        canManageSettings: gte(role, 'admin'),
-        canViewAudit: gte(role, 'admin'),
     }), [role]);
 }
