@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { calculateDeductionDays } from '../../utils/deductionDays';
+import { logActivity } from '../../api/client';
 import { getLibyaDateStr, getAccrualLabel, getAccruedDays, getLibyaYear } from '../../utils/libyaTime';
 import { computeFifoAudit } from '../../utils/leaveCalc';
 import CustomConfirmModal from './CustomConfirmModal';
@@ -134,6 +135,7 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
             } else {
                 await onSubmit(employee.id, { start, end, customHolidays: Number(holidays) || 0, note: noteVal });
             }
+            logActivity('تسجيل إجازة', `تم تسجيل إجازة للموظف "${employee.name}" بعدد ${days} أيام`).catch(() => {});
             setStart(''); setEnd(''); setHolidays(0);
             setUnknownDays(''); setNote('');
         } catch (err) {

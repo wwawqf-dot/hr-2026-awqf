@@ -6,9 +6,10 @@ import NavTabs from './components/NavTabs';
 import EmployeesPage from './components/EmployeesPage';
 import UsersPage from './components/UsersPage';
 import AuditPage from './components/AuditPage';
+import ActivityLog from './components/ActivityLog';
 import SettingsPage from './components/SettingsPage';
 const PUBLIC_TABS = ['employees'];
-const ADMIN_TABS = ['users', 'audit', 'settings'];
+const ADMIN_TABS = ['users', 'audit', 'activity', 'settings'];
 
 export default function App() {
     const { user, loading } = useAuth();
@@ -48,12 +49,13 @@ export default function App() {
                 {activeView === 'employees' && <EmployeesPage leaveData={leaveData} />}
                 {activeView === 'users' && isAdmin && <UsersPage />}
                 {activeView === 'audit' && isAdmin && <AuditPage />}
+                {activeView === 'activity' && isAdmin && <ActivityLog />}
                 {activeView === 'settings' && isAdmin && <SettingsPage leaveData={leaveData} />}
             </div>
             <footer className="footer">
                 منظومة إجازات الموظفين الرقمية - مكتب أوقاف القره بوللي | تصميم وتطوير <span>عبدالرحيم أحمد شيتة</span> &copy; 2026
                 <br />
-                <span style={{ fontSize: '0.85em', opacity: 0.85 }}>النسخة 7.0</span>
+                <span style={{ fontSize: '0.85em', opacity: 0.85 }}>النسخة 8.1</span>
             </footer>
         </div>
     );

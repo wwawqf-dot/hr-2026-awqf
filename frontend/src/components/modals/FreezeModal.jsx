@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import LoadingSpinner from '../LoadingSpinner';
+import { logActivity } from '../../api/client';
 
 // Global freeze modal: pick an employee, see their current status, then
 // confirm freezing/unfreezing their record. Admin-only (gated by caller).
@@ -19,6 +20,8 @@ export default function FreezeModal({ employees, onToggleFreeze, onClose }) {
         setSaving(true);
         try {
             await onToggleFreeze(employee.id, includeInPrint);
+            const action = employee.is_frozen ? 'إلغاء تجميد' : 'تجميد';
+            logActivity(`${action} موظف`, `تم ${action} الموظف "${employee.name}"`).catch(() => {});
             onClose();
         } catch (err) {
             setError(err.message || 'تعذر تنفيذ العملية');

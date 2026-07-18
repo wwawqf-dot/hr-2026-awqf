@@ -12,6 +12,7 @@ import StatementModal from './modals/StatementModal';
 import FreezeModal from './modals/FreezeModal';
 import CustomConfirmModal from './modals/CustomConfirmModal';
 import { exportEmployeesToExcel } from '../utils/exportExcel';
+import { logActivity } from '../api/client';
 
 // `leaveData` is the single useLeaveData() instance owned by App.jsx and
 // shared with SettingsPage — see the comment in App.jsx for why this is
@@ -51,6 +52,7 @@ export default function EmployeesPage({ leaveData }) {
         setDeleteBusy(true);
         try {
             await deleteEmployee(confirmEmp.id);
+            logActivity('أرشفة موظف', `تم أرشفة الموظف "${confirmEmp.name}" — اختفى من كل الشاشات ويمكن استعادته من الأرشيف`).catch(() => {});
             setConfirmEmp(null);
         } catch (err) {
             setConfirmEmp(null);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { formatDateDisplay } from '../../utils/formatDate';
 import LoadingSpinner from '../LoadingSpinner';
+import { logActivity } from '../../api/client';
 
 const emptyForm = { name: '', job_number: '', national_id: '', job_title: '', initial_carried_forward: 0, over_45: false, hire_date_current_year: '', is_unpaid_leave: false };
 
@@ -48,6 +49,12 @@ export default function EmployeeFormModal({ mode, employee, years, openingBalanc
                 is_unpaid_leave: form.is_unpaid_leave,
                 hire_date_current_year: form.hire_date_current_year || null,
             });
+            if (mode === 'edit') {
+                logActivity('تعديل بيانات موظف', `تم تعديل بيانات الموظف "${form.name.trim()}"`).catch(() => {});
+            }
+            if (form.is_unpaid_leave && mode === 'edit') {
+                logActivity('تفعيل إجازة بدون مرتب', `تم تفعيل إجازة بدون مرتب للموظف "${form.name.trim()}" — سيتم تجميد جميع الأرصدة إلى صفر في التقارير`).catch(() => {});
+            }
             onClose();
         } catch (err) {
             setError(err.message || 'حدث خطأ أثناء الحفظ');

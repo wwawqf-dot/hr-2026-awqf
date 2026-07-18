@@ -1,8 +1,17 @@
 import { supabase } from '../supabaseClient';
 
-// Server-side pagination page size for the audit log — the one table
-// with genuinely unbounded growth in this system.
 const AUDIT_PAGE_SIZE = 50;
+const ACTIVITY_PAGE_SIZE = 50;
+
+export async function logActivity(actionType, details) {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const userEmail = session?.user?.email || 'غير معروف';
+        await supabase.from('activity_logs').insert({ user_email: userEmail, action_type: actionType, details });
+    } catch (e) {
+        console.warn('[logActivity] فشل تسجيل النشاط:', e);
+    }
+}
 
 class ApiError extends Error {
     constructor(message, status) {
@@ -299,6 +308,33 @@ export const api = {
             })),
             page,
             pageSize: AUDIT_PAGE_SIZE,
+            total,
+            hasMore: to + 1 < total,
+        };
+    },
+
+    // ---- Activity log (admin security trail) --------------------------
+    getActivityLog: async (page = 0) => {
+        const from = page * ACTIVITY_PAGE_SIZE;
+        const to = from + ACTIVITY_PAGE_SIZE - 1;
+        const { data, count } = await safeSupabaseFull(
+            supabase
+                .from('activity_logs')
+                .select('id, user_email, action_type, details, timestamp', { count: 'exact' })
+                .order('id', { ascending: false })
+                .range(from, to)
+        );
+        const total = count || 0;
+        return {
+            log: (data || []).map((r) => ({
+                id: r.id,
+                userEmail: r.user_email,
+                actionType: r.action_type,
+                details: r.details,
+                timestamp: r.timestamp,
+            })),
+            page,
+            pageSize: ACTIVITY_PAGE_SIZE,
             total,
             hasMore: to + 1 < total,
         };

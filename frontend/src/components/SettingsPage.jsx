@@ -4,6 +4,7 @@ import LoadingSpinner from './LoadingSpinner';
 import { TableSkeleton } from './SkeletonLoader';
 import ConfirmDangerModal from './modals/ConfirmDangerModal';
 import { getLibyaDateStr, getLibyaYear } from '../utils/libyaTime';
+import { logActivity } from '../api/client';
 
 // Structural validation of an imported backup file, run BEFORE anything is
 // sent to the sync RPC. Returns a user-friendly Arabic error string, or ''
@@ -101,6 +102,7 @@ export default function SettingsPage({ leaveData }) {
         setArchiveError('');
         try {
             await restoreEmployee(emp.id);
+            logActivity('استعادة موظف', `تم استعادة الموظف "${emp.name}" من الأرشيف`).catch(() => {});
             setArchivedEmployees((prev) => prev.filter((e) => e.id !== emp.id));
         } catch (err) {
             setArchiveError(err.message || 'تعذر استعادة الموظف');
@@ -114,6 +116,7 @@ export default function SettingsPage({ leaveData }) {
         setArchiveError('');
         try {
             await restoreYear(year);
+            logActivity('استعادة سنة مالية', `تم استعادة السنة المالية ${year} من الأرشيف`).catch(() => {});
             setArchivedYears((prev) => prev.filter((y) => y !== year));
         } catch (err) {
             setArchiveError(err.message || 'تعذر استعادة السنة المالية');
@@ -121,6 +124,7 @@ export default function SettingsPage({ leaveData }) {
             setRestoringKey(null);
         }
     }
+
     async function handleAddYear(e) {
         e.preventDefault();
         setYearError('');
@@ -139,6 +143,7 @@ export default function SettingsPage({ leaveData }) {
         setSavingYear(true);
         try {
             await addYear({ year: yearStr, defaultAddedDays: Number(defaultAdded) || 0 });
+            logActivity('إضافة سنة مالية', `تم إضافة السنة المالية ${yearStr}`).catch(() => {});
             setNewYear('');
         } catch (err) {
             setYearError(err.message || 'تعذر إضافة السنة المالية');
@@ -174,6 +179,7 @@ export default function SettingsPage({ leaveData }) {
 
         try {
             await deleteYear(year);
+            logActivity('أرشفة سنة مالية', `تم أرشفة السنة المالية ${year} — اختفت من كل الشاشات ويمكن استعادتها من الأرشيف`).catch(() => {});
         } catch (err) {
             alert(err.message || 'تعذر حذف السنة المالية');
         }

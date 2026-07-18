@@ -3,7 +3,8 @@ import { useState } from 'react';
 const ALL_TABS = [
     { key: 'employees', label: 'الموظفون', icon: 'fa-users', roles: ['admin', 'data_entry', 'viewer'] },
     { key: 'users', label: 'إدارة المستخدمين', icon: 'fa-user-shield', roles: ['admin'] },
-    { key: 'audit', label: 'سجل النشاطات', icon: 'fa-clipboard-list', roles: ['admin'] },
+    { key: 'activity', label: 'سجل النشاطات', icon: 'fa-shield-alt', roles: ['admin'] },
+    { key: 'audit', label: 'سجل المراجعة', icon: 'fa-clipboard-list', roles: ['admin'] },
     { key: 'settings', label: 'أساسيات النظام', icon: 'fa-sliders-h', roles: ['admin'] },
 ];
 
