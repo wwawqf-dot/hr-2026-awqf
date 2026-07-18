@@ -93,7 +93,7 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
     }, [days, fifo.previousCarryOver]);
 
     const liveBlockMessage = yearMismatched
-        ? 'لا يمكن تسجيل الإجازة: تاريخ الإجازة يقع خارج السنة المالية النشطة حالياً. يرجى إغلاق السنة الحالية أو تفعيل السنة المناسبة.'
+        ? ''
         : balanceBlocked
             ? `الرصيد المتاح (${netBalance} يوم) غير كافٍ لتغطية الخصم المطلوب (${days} يوم).`
             : retroBlocked
@@ -190,6 +190,16 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
                 </div>
 
                 {error && <div className="form-error">{error}</div>}
+
+                {yearMismatched && (
+                    <div className="time-guard-banner">
+                        <i className="fas fa-calendar-times" style={{ fontSize: '1.3rem', marginLeft: 10 }}></i>
+                        <div>
+                            <strong style={{ fontSize: '1rem' }}>السنة المالية غير متطابقة</strong><br />
+                            <span style={{ fontSize: '0.88rem' }}>لا يمكن تسجيل الإجازة: تاريخ الإجازة يقع خارج السنة المالية النشطة حالياً. يرجى إغلاق السنة الحالية أو تفعيل السنة المناسبة.</span>
+                        </div>
+                    </div>
+                )}
 
                 <form onSubmit={handleSubmit}>
                     <div className="date-range-row">
