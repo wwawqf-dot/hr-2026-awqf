@@ -95,11 +95,10 @@ export function printEmployeeStatement(employee) {
             th { font-weight: 800; background-color: #fff; }
             td { font-weight: 700; }
             td.note-col { text-align: right; padding-right: 12px; }
-            .signatures { margin-top: 70px; display: flex; justify-content: space-between; text-align: center; padding: 0 20px; }
-            .sig-block { flex: 1; display: flex; flex-direction: column; align-items: center; }
-            .sig-role { margin: 0 0 45px 0; font-size: 14px; font-weight: 800; }
-            .sig-space { width: 75%; height: 1px; border-bottom: 1.5px solid #000; margin-bottom: 8px; }
-            .sig-title { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.3px; }
+            .signatures { margin-top: 4rem; padding-top: 2rem; display: flex; justify-content: space-between; text-align: center; padding: 2rem 20px 0; }
+            .sig-col { flex: 1; display: flex; flex-direction: column; align-items: center; }
+            .sig-space { width: 70%; height: 70px; border-bottom: 1.5px solid #000; margin-bottom: 12px; }
+            .sig-text { margin: 0; font-size: 14px; font-weight: 700; }
             .footer-note { margin-top: 50px; font-size: 12px; color: #333; text-align: right; font-weight: 500; }
             .statement-note { margin-top: 22px; padding: 12px 16px; border: 1.5px solid #000; border-radius: 6px; font-size: 13px; font-weight: 700; line-height: 1.9; text-align: right; background-color: #f7f7f7; }
             @media print {
@@ -166,9 +165,9 @@ export function printEmployeeStatement(employee) {
         </div>
 
         <div class="signatures">
-            <div class="sig-block"><p class="sig-role">إعداد</p><div class="sig-space"></div><p class="sig-title">وحدة شؤون الموظفين</p></div>
-            <div class="sig-block"><p class="sig-role">اعتماد</p><div class="sig-space"></div><p class="sig-title">&nbsp;</p></div>
-            <div class="sig-block"><p class="sig-role">اعتماد</p><div class="sig-space"></div><p class="sig-title">مدير مكتب أوقاف القره بوللي</p></div>
+            <div class="sig-col"><div class="sig-space"></div><p class="sig-text">مراجعة وحدة شؤون الموظفين</p></div>
+            <div class="sig-col"><div class="sig-space"></div><p class="sig-text">اعتماد رئيس قسم الشؤون الإدارية</p></div>
+            <div class="sig-col"><div class="sig-space"></div><p class="sig-text">اعتماد مدير مكتب أوقاف القره بوللي</p></div>
         </div>
 
         <div class="footer-note">تم انشاء هذا الكشف بواسطة منظومة الإجازات</div>
