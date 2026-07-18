@@ -1309,7 +1309,32 @@ grant execute on function public.delete_auth_user(uuid)               to authent
 grant execute on function public.update_user_role(uuid, text)         to authenticated;
 
 -- ---------------------------------------------------------------------
--- 10. INVITE CODES — Admin generates, new users self-register
+-- 10. ACTIVITY LOGS — Security audit trail
+-- ---------------------------------------------------------------------
+create table if not exists public.activity_logs (
+    id bigserial primary key,
+    user_email text not null,
+    action_type text not null,
+    details text,
+    timestamp timestamptz not null default now()
+);
+
+alter table public.activity_logs enable row level security;
+
+create policy "authenticated can insert activity_logs"
+    on public.activity_logs for insert to authenticated with check (true);
+
+create policy "admins can select activity_logs"
+    on public.activity_logs for select to authenticated
+    using (
+        exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
+    );
+
+create index if not exists idx_activity_logs_id_desc on public.activity_logs (id desc);
+create index if not exists idx_activity_logs_action_type on public.activity_logs (action_type);
+
+-- ---------------------------------------------------------------------
+-- 11. INVITE CODES — Admin generates, new users self-register
 -- ---------------------------------------------------------------------
 create table if not exists public.invite_codes (
     code       text primary key,
