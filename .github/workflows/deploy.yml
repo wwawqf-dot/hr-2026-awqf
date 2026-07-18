@@ -50,6 +50,7 @@ jobs:
             --no-verify-jwt
 
   build:
+    needs: db-push
     runs-on: ubuntu-latest
     defaults:
       run:
