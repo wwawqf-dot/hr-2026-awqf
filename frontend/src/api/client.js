@@ -62,10 +62,17 @@ function isMissingRelation(error) {
     return /relation.*does not exist|does not exist|relation ".+" not found/i.test(msg);
 }
 
+function isPostgresError(error) {
+    if (!error) return false;
+    var code = error.code;
+    return typeof code === 'string' && code.length >= 4;
+}
+
 function classifyError(error) {
     if (isNetworkError(error)) return { status: 0, message: NETWORK_MSG };
     if (isAuthExpired(error))  return { status: 401, message: SESSION_MSG };
     if (isBusinessException(error)) return { status: 400, message: error.message };
+    if (isPostgresError(error)) return { status: 400, message: error.message };
     if (isServerError(error))  return { status: 503, message: SERVER_MSG };
     if (isMissingRelation(error)) return { status: 404, message: 'جدول غير موجود في قاعدة البيانات. يُرجى تشغيل SQL النشر من supabase/deploy-all.sql عبر Dashboard.' };
     return null;
