@@ -1,6 +1,5 @@
 import { supabase } from '../supabaseClient';
 
-const AUDIT_PAGE_SIZE = 50;
 const ACTIVITY_PAGE_SIZE = 50;
 
 export async function logActivity(actionType, details) {
@@ -277,40 +276,6 @@ export const api = {
             supabase.rpc('consume_invite_code', { p_code: code })
         );
         return { message: 'تم استهلاك رمز الدعوة' };
-    },
-
-    // ---- Audit log ------------------------------------------------------
-    // This is the one table in the system with genuinely unbounded growth
-    // (every deduction/edit/freeze/sync writes a row, forever) — server-
-    // side paginated via Supabase `.range()` rather than ever fetching the
-    // whole table. `page` is 0-indexed; PAGE_SIZE caps each request at 50
-    // rows, so the client never holds more than one page in memory.
-    getAuditLog: async (page = 0) => {
-        const from = page * AUDIT_PAGE_SIZE;
-        const to = from + AUDIT_PAGE_SIZE - 1;
-        const { data, count } = await safeSupabaseFull(
-            supabase
-                .from('audit_log')
-                .select('id, user_id, username, role, action, details, timestamp', { count: 'exact' })
-                .order('id', { ascending: false })
-                .range(from, to)
-        );
-        const total = count || 0;
-        return {
-            log: (data || []).map((r) => ({
-                id: r.id,
-                userId: r.user_id,
-                username: r.username,
-                role: r.role,
-                action: r.action,
-                details: r.details,
-                timestamp: r.timestamp,
-            })),
-            page,
-            pageSize: AUDIT_PAGE_SIZE,
-            total,
-            hasMore: to + 1 < total,
-        };
     },
 
     // ---- Activity log (admin security trail) --------------------------

@@ -5,11 +5,10 @@ import Login from './components/Login';
 import NavTabs from './components/NavTabs';
 import EmployeesPage from './components/EmployeesPage';
 import UsersPage from './components/UsersPage';
-import AuditPage from './components/AuditPage';
 import ActivityLog from './components/ActivityLog';
 import SettingsPage from './components/SettingsPage';
 const PUBLIC_TABS = ['employees'];
-const ADMIN_TABS = ['users', 'audit', 'activity', 'settings'];
+const ADMIN_TABS = ['users', 'activity', 'settings'];
 
 export default function App() {
     const { user, loading } = useAuth();
@@ -48,7 +47,6 @@ export default function App() {
                 <NavTabs view={activeView} setView={setView} role={user.role} />
                 {activeView === 'employees' && <EmployeesPage leaveData={leaveData} />}
                 {activeView === 'users' && isAdmin && <UsersPage />}
-                {activeView === 'audit' && isAdmin && <AuditPage />}
                 {activeView === 'activity' && isAdmin && <ActivityLog />}
                 {activeView === 'settings' && isAdmin && <SettingsPage leaveData={leaveData} />}
             </div>
