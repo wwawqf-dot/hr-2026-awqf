@@ -226,6 +226,8 @@ $$;
 -- Weekday day-count, faithful to backend/src/utils/days.js.
 -- Postgres dow: 0=Sun .. 6=Sat (same mapping as JS getDay()).
 -- Unified weekend rule for ALL employees: Friday(5) + Saturday(6) only.
+drop function if exists public.calculate_deduction_days(text, text, numeric);
+drop function if exists public.calculate_deduction_days(text, text, numeric, boolean);
 create or replace function public.calculate_deduction_days(
     p_start text, p_end text, p_custom_holidays numeric default 0
 ) returns numeric

@@ -16,7 +16,7 @@
 -- instead of leaving the old one to linger alongside it.
 drop function if exists public.calculate_deduction_days(text, text, numeric, boolean);
 
-create function public.calculate_deduction_days(
+create or replace function public.calculate_deduction_days(
     p_start text, p_end text, p_custom_holidays numeric default 0
 ) returns numeric
 language plpgsql
