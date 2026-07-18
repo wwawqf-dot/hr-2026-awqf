@@ -127,6 +127,14 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
             return;
         }
 
+        if (hasUnknownDays) {
+            const dup = (employee.deductions_history || []).find(d => !d.start && Number(d.days) === Number(unknownDays));
+            if (dup) { setError('هذا الخصم مسجل مسبقاً'); return; }
+        } else {
+            const dup = (employee.deductions_history || []).find(d => d.start === start && d.end === end);
+            if (dup) { setError('هذا الخصم مسجل مسبقاً'); return; }
+        }
+
         setSaving(true);
         try {
             const noteVal = note.trim() || undefined;
