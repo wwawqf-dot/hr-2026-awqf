@@ -293,10 +293,9 @@ begin
     -- passing the insufficient-balance check before either one commits.
     select * into emp from public.employees where id = p_employee_id for update;
     if not found then raise exception 'الموظف غير موجود'; end if;
-    if emp.is_unpaid_leave then
-        raise exception 'الموظف في إجازة بدون مرتب - لا يمكن تسجيل خصومات';
-    end if;
-
+    -- Unpaid leave employees can still register deductions (the frontend
+    -- shows their balance as 0 everywhere, so the negative-balance guard
+    -- below must be skipped for them).
     v_note := nullif(left(trim(coalesce(p_payload->>'note','')), 500), '');
 
     select array_agg(year order by cast(year as integer)) into v_years
@@ -342,12 +341,15 @@ begin
 
     -- Insufficient-balance protection (computed BEFORE the new year row is
     -- inserted, matching the original Express behavior exactly).
-    select coalesce(emp.initial_carried_forward, 0)
-         + coalesce(sum(coalesce(added,0) - coalesce(deducted,0)), 0)
-      into v_net
-      from public.employee_years where employee_id = emp.id;
-    if v_days > v_net then
-        raise exception 'فشلت العملية: رصيد الموظف الحالي غير كافٍ لتغطية عدد أيام الخصم المطلوبة.';
+    -- Bypassed for unpaid leave employees (their balance is 0 by design).
+    if not emp.is_unpaid_leave then
+        select coalesce(emp.initial_carried_forward, 0)
+             + coalesce(sum(coalesce(added,0) - coalesce(deducted,0)), 0)
+          into v_net
+          from public.employee_years where employee_id = emp.id;
+        if v_days > v_net then
+            raise exception 'فشلت العملية: رصيد الموظف الحالي غير كافٍ لتغطية عدد أيام الخصم المطلوبة.';
+        end if;
     end if;
 
     insert into public.employee_years (employee_id, year, added, deducted)
@@ -358,10 +360,13 @@ begin
         where employee_id = emp.id and year = v_year;
 
     -- Post-update sanity check (defence in depth against race / logic bugs).
-    if coalesce((select coalesce(emp.initial_carried_forward,0)
-                  + sum(coalesce(added,0) - coalesce(deducted,0))
-             from public.employee_years where employee_id = emp.id), 0) < 0 then
-        raise exception 'خطأ داخلي: الرصيف سالب بعد الخصم - تم إلغاء العملية';
+    -- Skipped for unpaid leave employees — they are allowed to go negative.
+    if not emp.is_unpaid_leave then
+        if coalesce((select coalesce(emp.initial_carried_forward,0)
+                      + sum(coalesce(added,0) - coalesce(deducted,0))
+                 from public.employee_years where employee_id = emp.id), 0) < 0 then
+            raise exception 'خطأ داخلي: الرصيف سالب بعد الخصم - تم إلغاء العملية';
+        end if;
     end if;
 
     insert into public.deductions (employee_id, year, start_date, end_date, days, note, created_by, created_at)
