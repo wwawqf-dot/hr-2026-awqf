@@ -70,7 +70,7 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
     const netBalance = computeNetBalance(employee, monthlyRate);
     const retroDaysLive = !hasUnknownDays && start ? daysBetween(start, localTodayStr()) : null;
     const retroBlocked = retroDaysLive !== null && retroDaysLive > RETRO_LIMIT_DAYS;
-    const balanceBlocked = days > 0 && days > netBalance;
+    const balanceBlocked = !employee.is_unpaid_leave && days > 0 && days > netBalance;
 
     // Time Guard: a dated deduction must fall inside the currently active
     // financial year (the latest year open in Settings) — never a closed
@@ -122,7 +122,7 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
             }
         }
 
-        if (days > computeNetBalance(employee, monthlyRate)) {
+        if (!employee.is_unpaid_leave && days > computeNetBalance(employee, monthlyRate)) {
             setError('فشلت العملية: رصيد الموظف الحالي غير كافٍ لتغطية عدد أيام الخصم المطلوبة.');
             return;
         }
