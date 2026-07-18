@@ -316,9 +316,15 @@ begin
             raise exception 'لا يمكن تسجيل الإجازة: تاريخ الإجازة يقع خارج السنة المالية النشطة حالياً. يرجى إغلاق السنة الحالية أو تفعيل السنة المناسبة.';
         end if;
         v_year := v_start_year;
+        if p_holidays < 0 then
+            raise exception 'لا يمكن أن يكون عدد العطلات الرسمية سالباً';
+        end if;
         v_days := public.calculate_deduction_days(p_start::date, p_end::date, p_holidays);
         if v_days <= 0 then
             raise exception 'يجب أن يكون عدد أيام الخصم أكبر من صفر';
+        end if;
+        if v_days > 366 then
+            raise exception 'لا يمكن تسجيل خصم يتجاوز 366 يوماً في عملية واحدة';
         end if;
         -- "Today" must be Libya's calendar date, not the database server's.
         -- Supabase runs on UTC, so between 00:00 and 02:00 Libya time
@@ -330,10 +336,18 @@ begin
             raise exception 'لا يمكن تسجيل إجازة بتاريخ رجعي يتجاوز 40 يوماً من تاريخ النظام الحالي.';
         end if;
         v_start := p_start; v_end := p_end;
+
+        if exists (select 1 from public.deductions
+                    where employee_id = emp.id and start_date = v_start and end_date = v_end) then
+            raise exception 'هذا الخصم مسجل مسبقاً لهذا التاريخ';
+        end if;
     elsif v_has_unknown then
         v_days := p_unknown::numeric;
         if not (v_days > 0) then
             raise exception 'يرجى إدخال عدد أيام صحيح أكبر من صفر';
+        end if;
+        if v_days > 366 then
+            raise exception 'لا يمكن تسجيل خصم يتجاوز 366 يوماً في عملية واحدة';
         end if;
         v_year := v_latest;
     else

@@ -218,28 +218,12 @@ export const api = {
 
     // ---- Users (admin CRUD via SECURITY DEFINER RPCs) --------------------
     getUsers: async () => {
-        let rows;
-        try {
-            const { data, error } = await supabase
+        const rows = await safeSupabase(
+            supabase
                 .from('profiles')
                 .select('id, username, role, email, created_at')
-                .order('created_at');
-            if (error) {
-                const classified = classifyError(error);
-                if (classified) {
-                    if (classified.status === 401 && onAuthExpired) onAuthExpired();
-                    console.warn('[getUsers] classified error:', classified.message);
-                } else {
-                    console.warn('[getUsers] unclassified error:', error.message);
-                }
-                rows = [];
-            } else {
-                rows = data;
-            }
-        } catch (e) {
-            console.warn('[getUsers] exception:', e);
-            rows = [];
-        }
+                .order('created_at')
+        );
         return {
             users: (rows || []).map((u) => ({
                 id: u.id,
