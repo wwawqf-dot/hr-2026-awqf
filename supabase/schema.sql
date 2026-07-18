@@ -299,7 +299,8 @@ begin
 
     v_note := nullif(left(trim(coalesce(p_payload->>'note','')), 500), '');
 
-    select array_agg(year order by cast(year as integer)) into v_years from public.years;
+    select array_agg(year order by cast(year as integer)) into v_years
+        from public.years where coalesce(is_archived, false) = false;
     if v_years is null then raise exception 'لا توجد سنة مالية نشطة لتسجيل الخصم'; end if;
     v_latest := v_years[array_length(v_years, 1)];
 
@@ -308,8 +309,11 @@ begin
 
     if v_has_dates then
         v_start_year := split_part(p_start, '-', 1);
-        if not (v_start_year = any(v_years)) then
-            raise exception 'لا توجد سنة مالية نشطة مطابقة لتاريخ البداية (%)', v_start_year;
+        -- Strict Time Guard: the deduction's year must be exactly the
+        -- active (latest, non-archived) financial year — not merely any
+        -- year that happens to still have a row in public.years.
+        if v_start_year is distinct from v_latest then
+            raise exception 'لا يمكن تسجيل الإجازة: تاريخ الإجازة يقع خارج السنة المالية النشطة حالياً. يرجى إغلاق السنة الحالية أو تفعيل السنة المناسبة.';
         end if;
         v_year := v_start_year;
         v_days := public.calculate_deduction_days(p_start, p_end, p_holidays);

@@ -42,7 +42,7 @@ function computeNetBalance(employee, monthlyRate) {
     return balance;
 }
 
-export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDeduction }) {
+export default function DeductionModal({ employee, systemYears = [], onClose, onSubmit, onDeleteDeduction }) {
     const { isAdmin } = useAuth();
     const [start, setStart] = useState('');
     const [end, setEnd] = useState('');
@@ -72,6 +72,18 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
     const retroBlocked = retroDaysLive !== null && retroDaysLive > RETRO_LIMIT_DAYS;
     const balanceBlocked = days > 0 && days > netBalance;
 
+    // Time Guard: a dated deduction must fall inside the currently active
+    // financial year (the latest year open in Settings) — never a closed
+    // prior year, even one still within the 40-day retroactive window.
+    // Only the start date's year is checked, matching the backend RPC's
+    // bucketing rule (register_deduction assigns the whole deduction to
+    // the start date's year regardless of where the end date falls).
+    const activeYear = systemYears.length
+        ? String(Math.max(...systemYears.map(Number)))
+        : null;
+    const startYear = !hasUnknownDays && start ? start.slice(0, 4) : null;
+    const yearMismatched = Boolean(startYear && activeYear && startYear !== activeYear);
+
     // FIFO split preview for this deduction
     const fifoPreview = useMemo(() => {
         if (days <= 0) return null;
@@ -80,11 +92,13 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
         return { fromPrev, fromCurrent };
     }, [days, fifo.previousCarryOver]);
 
-    const liveBlockMessage = balanceBlocked
-        ? `الرصيد المتاح (${netBalance} يوم) غير كافٍ لتغطية الخصم المطلوب (${days} يوم).`
-        : retroBlocked
-            ? `تاريخ البداية يسبق اليوم بـ ${retroDaysLive} يوماً، والحد الأقصى المسموح ${RETRO_LIMIT_DAYS} يوماً.`
-            : '';
+    const liveBlockMessage = yearMismatched
+        ? 'لا يمكن تسجيل الإجازة: تاريخ الإجازة يقع خارج السنة المالية النشطة حالياً. يرجى إغلاق السنة الحالية أو تفعيل السنة المناسبة.'
+        : balanceBlocked
+            ? `الرصيد المتاح (${netBalance} يوم) غير كافٍ لتغطية الخصم المطلوب (${days} يوم).`
+            : retroBlocked
+                ? `تاريخ البداية يسبق اليوم بـ ${retroDaysLive} يوماً، والحد الأقصى المسموح ${RETRO_LIMIT_DAYS} يوماً.`
+                : '';
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -92,6 +106,11 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
 
         if (days <= 0) {
             setError('يجب تحديد تاريخ البداية والنهاية، أو إدخال عدد أيام في حقل الخصم بغير تاريخ');
+            return;
+        }
+
+        if (yearMismatched) {
+            setError('لا يمكن تسجيل الإجازة: تاريخ الإجازة يقع خارج السنة المالية النشطة حالياً. يرجى إغلاق السنة الحالية أو تفعيل السنة المناسبة.');
             return;
         }
 
@@ -224,7 +243,7 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
                     )}
 
                     <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}
-                        disabled={saving || balanceBlocked || retroBlocked}>
+                        disabled={saving || balanceBlocked || retroBlocked || yearMismatched}>
                         {saving && <LoadingSpinner size={16} color="#fff" style={{ marginLeft: 8 }} />}
                         {saving ? 'جاري الحفظ...' : 'اعتماد الخصم'}
                     </button>

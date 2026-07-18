@@ -131,6 +131,7 @@ export default function EmployeesPage({ leaveData }) {
             {modal?.type === 'deduction' && activeEmployee && (
                 <DeductionModal
                     employee={activeEmployee}
+                    systemYears={years}
                     onClose={closeModal}
                     onSubmit={addDeduction}
                     onDeleteDeduction={deleteDeduction}
