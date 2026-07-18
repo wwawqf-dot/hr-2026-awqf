@@ -67,7 +67,12 @@ export async function exportEmployeesToExcel(employees, years) {
         cell.border = thinBorder;
     });
 
-    employees.forEach((emp, idx) => {
+    // Same frozen-last ordering as the on-screen table (EmployeesTable.jsx) —
+    // without this the exported row order could disagree with what the
+    // admin just saw on screen.
+    const sortedEmployees = [...employees].sort((a, b) => (a.is_frozen ? 1 : 0) - (b.is_frozen ? 1 : 0));
+
+    sortedEmployees.forEach((emp, idx) => {
         const monthlyRate = emp.over_45 ? 3.75 : 2.5;
         const ledger = computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
         const rowData = [idx + 1, emp.name, emp.job_number || '-', emp.national_id || '-', emp.job_title || '-'];
