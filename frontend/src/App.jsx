@@ -53,7 +53,7 @@ export default function App() {
             <footer className="footer">
                 منظومة إجازات الموظفين الرقمية - مكتب أوقاف القره بوللي | تصميم وتطوير <span>عبدالرحيم أحمد شيتة</span> &copy; 2026
                 <br />
-                <span style={{ fontSize: '0.85em', opacity: 0.85 }}>النسخة 6.9</span>
+                <span style={{ fontSize: '0.85em', opacity: 0.85 }}>النسخة 7.0</span>
             </footer>
         </div>
     );
