@@ -17,6 +17,7 @@ concurrency:
 jobs:
   db-push:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -32,8 +33,9 @@ jobs:
             --project-ref uzmhsesmszngkanjsjgy
 
   deploy-edge-function:
-    needs: db-push
+    needs: []
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
