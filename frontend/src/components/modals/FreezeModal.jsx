@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import LoadingSpinner from '../LoadingSpinner';
 
 // Global freeze modal: pick an employee, see their current status, then
 // confirm freezing/unfreezing their record. Admin-only (gated by caller).
@@ -96,6 +97,7 @@ export default function FreezeModal({ employees, onToggleFreeze, onClose }) {
                     disabled={!employee || saving}
                     onClick={handleConfirm}
                 >
+                    {saving && <LoadingSpinner size={16} color="#fff" style={{ marginLeft: 8 }} />}
                     {saving
                         ? 'جاري التنفيذ...'
                         : employee && employee.is_frozen

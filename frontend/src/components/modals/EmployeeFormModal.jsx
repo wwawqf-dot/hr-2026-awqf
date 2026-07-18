@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { formatDateDisplay } from '../../utils/formatDate';
+import LoadingSpinner from '../LoadingSpinner';
 
 const emptyForm = { name: '', job_number: '', national_id: '', job_title: '', initial_carried_forward: 0, over_45: false, hire_date_current_year: '', is_unpaid_leave: false };
 
@@ -161,6 +162,7 @@ export default function EmployeeFormModal({ mode, employee, years, openingBalanc
                         style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }}
                         disabled={saving}
                     >
+                        {saving && <LoadingSpinner size={16} color="#fff" style={{ marginLeft: 8 }} />}
                         {saving ? 'جاري الحفظ...' : submitLabel}
                     </button>
                 </form>

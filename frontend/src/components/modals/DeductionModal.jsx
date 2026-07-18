@@ -4,6 +4,7 @@ import { calculateDeductionDays } from '../../utils/deductionDays';
 import { getLibyaDateStr, getAccrualLabel, getAccruedDays, getLibyaYear } from '../../utils/libyaTime';
 import { computeFifoAudit } from '../../utils/leaveCalc';
 import CustomConfirmModal from './CustomConfirmModal';
+import LoadingSpinner from '../LoadingSpinner';
 
 const RETRO_LIMIT_DAYS = 40;
 
@@ -224,6 +225,7 @@ export default function DeductionModal({ employee, onClose, onSubmit, onDeleteDe
 
                     <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}
                         disabled={saving || balanceBlocked || retroBlocked}>
+                        {saving && <LoadingSpinner size={16} color="#fff" style={{ marginLeft: 8 }} />}
                         {saving ? 'جاري الحفظ...' : 'اعتماد الخصم'}
                     </button>
                 </form>

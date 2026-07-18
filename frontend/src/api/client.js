@@ -1,5 +1,9 @@
 import { supabase } from '../supabaseClient';
 
+// Server-side pagination page size for the audit log — the one table
+// with genuinely unbounded growth in this system.
+const AUDIT_PAGE_SIZE = 50;
+
 class ApiError extends Error {
     constructor(message, status) {
         super(message);
@@ -48,28 +52,39 @@ function classifyError(error) {
     return null;
 }
 
+function throwClassified(e, fallback) {
+    if (e instanceof ApiError) throw e;
+    const classified = classifyError(e);
+    if (classified) {
+        if (classified.status === 401 && onAuthExpired) onAuthExpired();
+        throw new ApiError(classified.message, classified.status);
+    }
+    if (isServerError(e)) throw new ApiError(SERVER_MSG, 503);
+    if (isNetworkError(e)) throw new ApiError(NETWORK_MSG, 0);
+    throw new ApiError(fallback, 400);
+}
+
 async function safeSupabase(promise, fallback = 'حدث خطأ غير متوقع') {
     try {
         const { data, error } = await promise;
-        if (error) {
-            const classified = classifyError(error);
-            if (classified) {
-                if (classified.status === 401 && onAuthExpired) onAuthExpired();
-                throw new ApiError(classified.message, classified.status);
-            }
-            throw new ApiError(error.message || fallback, error.status || 400);
-        }
+        if (error) throwClassified(error, fallback);
         return data;
     } catch (e) {
-        if (e instanceof ApiError) throw e;
-        const classified = classifyError(e);
-        if (classified) {
-            if (classified.status === 401 && onAuthExpired) onAuthExpired();
-            throw new ApiError(classified.message, classified.status);
-        }
-        if (isServerError(e)) throw new ApiError(SERVER_MSG, 503);
-        if (isNetworkError(e)) throw new ApiError(NETWORK_MSG, 0);
-        throw new ApiError(fallback, 400);
+        throwClassified(e, fallback);
+    }
+}
+
+// Same network/auth/server error handling as safeSupabase, but also
+// returns the exact row `count` — needed for paginated queries (e.g.
+// `.select(..., { count: 'exact' }).range(from, to)`), where safeSupabase's
+// data-only return would throw away the total-row information.
+async function safeSupabaseFull(promise, fallback = 'حدث خطأ غير متوقع') {
+    try {
+        const { data, error, count } = await promise;
+        if (error) throwClassified(error, fallback);
+        return { data, count };
+    } catch (e) {
+        throwClassified(e, fallback);
     }
 }
 
@@ -78,7 +93,9 @@ function rpc(fn, args) {
 }
 
 async function listYears() {
-    const data = await safeSupabase(supabase.from('years').select('year'));
+    // is_archived = false: a soft-deleted year must disappear from every
+    // dropdown/listing exactly like a real deletion would.
+    const data = await safeSupabase(supabase.from('years').select('year').eq('is_archived', false));
     return { years: (data || []).map((r) => r.year).sort((a, b) => Number(a) - Number(b)) };
 }
 
@@ -90,10 +107,13 @@ async function listExpiringLeaves(windowDays = 7) {
     const fmt = (d) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+    // `!inner` so we can filter on the joined employees row: an archived
+    // employee's deductions must not surface on this dashboard widget.
     const data = await safeSupabase(
         supabase
             .from('deductions')
-            .select('id, end_date, start_date, days, employee:employees(name, job_number)')
+            .select('id, end_date, start_date, days, employee:employees!inner(name, job_number, is_archived)')
+            .eq('employee.is_archived', false)
             .gte('end_date', fmt(today))
             .lte('end_date', fmt(ceiling))
             .order('end_date')
@@ -115,10 +135,12 @@ export const api = {
     getEmployees: () => rpc('list_employees'),
     addEmployee: (payload) => rpc('create_employee', { p_payload: payload }),
     updateEmployee: (id, payload) => rpc('update_employee', { p_id: id, p_payload: payload }),
-    deleteEmployee: async (id) => {
-        await safeSupabase(supabase.from('employees').delete().eq('id', id));
-        return { message: 'تم حذف الموظف' };
-    },
+    // Soft delete: archive_employee() flips is_archived instead of running
+    // a hard DELETE. The row (and its employee_years/deductions history)
+    // is never touched — the employee just stops appearing anywhere.
+    deleteEmployee: (id) => rpc('archive_employee', { p_id: id }),
+    restoreEmployee: (id) => rpc('restore_employee', { p_id: id }),
+    getArchivedEmployees: () => rpc('list_archived_employees'),
     toggleFreeze: (id, includeInPrint = true) => rpc('toggle_employee_freeze', { p_id: id, p_include_in_print: includeInPrint }),
     bulkAddEmployees: (rows, reconciliationNote = 'تسوية جرد ورقي') =>
         rpc('bulk_add_employees', { p_rows: rows, p_note: reconciliationNote }),
@@ -134,7 +156,11 @@ export const api = {
                 ? 30 : Number(defaultAddedDays),
         });
     },
-    deleteYear: (year) => rpc('delete_year', { p_year: String(year) }),
+    // Soft delete: archive_year() flips is_archived instead of hard-
+    // deleting every deduction/employee_years row tied to that year.
+    deleteYear: (year) => rpc('archive_year', { p_year: String(year) }),
+    restoreYear: (year) => rpc('restore_year', { p_year: String(year) }),
+    getArchivedYears: () => rpc('list_archived_years'),
 
     // ---- Deductions ---------------------------------------------------
     getExpiringLeaves: () => listExpiringLeaves(),
@@ -246,16 +272,25 @@ export const api = {
         return { message: 'تم استهلاك رمز الدعوة' };
     },
 
-    // ---- Audit log ----------------------------------------------------
-    getAuditLog: async () => {
-        const rows = await safeSupabase(
+    // ---- Audit log ------------------------------------------------------
+    // This is the one table in the system with genuinely unbounded growth
+    // (every deduction/edit/freeze/sync writes a row, forever) — server-
+    // side paginated via Supabase `.range()` rather than ever fetching the
+    // whole table. `page` is 0-indexed; PAGE_SIZE caps each request at 50
+    // rows, so the client never holds more than one page in memory.
+    getAuditLog: async (page = 0) => {
+        const from = page * AUDIT_PAGE_SIZE;
+        const to = from + AUDIT_PAGE_SIZE - 1;
+        const { data, count } = await safeSupabaseFull(
             supabase
                 .from('audit_log')
-                .select('id, user_id, username, role, action, details, timestamp')
+                .select('id, user_id, username, role, action, details, timestamp', { count: 'exact' })
                 .order('id', { ascending: false })
+                .range(from, to)
         );
+        const total = count || 0;
         return {
-            log: (rows || []).map((r) => ({
+            log: (data || []).map((r) => ({
                 id: r.id,
                 userId: r.user_id,
                 username: r.username,
@@ -264,6 +299,10 @@ export const api = {
                 details: r.details,
                 timestamp: r.timestamp,
             })),
+            page,
+            pageSize: AUDIT_PAGE_SIZE,
+            total,
+            hasMore: to + 1 < total,
         };
     },
 
@@ -280,10 +319,13 @@ export const api = {
         await rpc('export_all');
         return { message: 'قاعدة البيانات على Supabase تُنسخ احتياطياً تلقائياً. استخدم "تصدير JSON" لأخذ نسخة محلية.' };
     },
-    deleteAllRecords: async () => {
-        await safeSupabase(supabase.from('employees').delete().neq('id', 0));
-        return { message: 'تم حذف جميع سجلات الموظفين بنجاح' };
-    },
+    // Deliberately still a real, irreversible hard delete (the danger-zone
+    // full wipe) — routed through a SECURITY DEFINER RPC now, since a raw
+    // REST DELETE against `employees` no longer has a grant (see the
+    // soft-delete migration): archive_employee/archive_year are the
+    // sanctioned path for routine deletion, and this RPC is the one
+    // remaining, explicit, admin-only exception.
+    deleteAllRecords: () => rpc('wipe_all_employees'),
 };
 
 export { ApiError };

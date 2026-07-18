@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react';
-import { useLeaveData } from '../hooks/useLeaveData';
 import PageHeader from './PageHeader';
 import LoadingSpinner from './LoadingSpinner';
 import { TableSkeleton } from './SkeletonLoader';
@@ -43,14 +42,15 @@ function validateBackupPayload(parsed) {
     return '';
 }
 
-export default function SettingsPage() {
+// `leaveData` is the single useLeaveData() instance owned by App.jsx and
+// shared with EmployeesPage — see the comment in App.jsx for why this is
+// no longer called independently here.
+export default function SettingsPage({ leaveData }) {
     const {
         years, settings, loading, error, addYear, deleteYear, updateSettings,
         exportBackup, importBackup, deleteAllRecords,
-    } = useLeaveData();
-
-
-
+        getArchivedEmployees, restoreEmployee, getArchivedYears, restoreYear,
+    } = leaveData;
 
     const [newYear, setNewYear] = useState('');
     const [defaultAdded, setDefaultAdded] = useState(30);
@@ -63,6 +63,64 @@ export default function SettingsPage() {
     const [importing, setImporting] = useState(false);
     const [showDangerModal, setShowDangerModal] = useState(false);
     const fileInputRef = useRef(null);
+
+    // Trash bin: loaded lazily (only once the admin expands the panel),
+    // since this is a rarely-used view and shouldn't add a request to
+    // every routine Settings page load.
+    const [archiveOpen, setArchiveOpen] = useState(false);
+    const [archiveLoaded, setArchiveLoaded] = useState(false);
+    const [archiveLoading, setArchiveLoading] = useState(false);
+    const [archiveError, setArchiveError] = useState('');
+    const [archivedEmployees, setArchivedEmployees] = useState([]);
+    const [archivedYears, setArchivedYears] = useState([]);
+    const [restoringKey, setRestoringKey] = useState(null);
+
+    async function loadArchive() {
+        setArchiveLoading(true);
+        setArchiveError('');
+        try {
+            const [emps, yrs] = await Promise.all([getArchivedEmployees(), getArchivedYears()]);
+            setArchivedEmployees(emps);
+            setArchivedYears(yrs);
+            setArchiveLoaded(true);
+        } catch (err) {
+            setArchiveError(err.message || 'تعذر تحميل الأرشيف');
+        } finally {
+            setArchiveLoading(false);
+        }
+    }
+
+    function toggleArchive() {
+        const next = !archiveOpen;
+        setArchiveOpen(next);
+        if (next && !archiveLoaded) loadArchive();
+    }
+
+    async function handleRestoreEmployee(emp) {
+        setRestoringKey(`emp-${emp.id}`);
+        setArchiveError('');
+        try {
+            await restoreEmployee(emp.id);
+            setArchivedEmployees((prev) => prev.filter((e) => e.id !== emp.id));
+        } catch (err) {
+            setArchiveError(err.message || 'تعذر استعادة الموظف');
+        } finally {
+            setRestoringKey(null);
+        }
+    }
+
+    async function handleRestoreYear(year) {
+        setRestoringKey(`year-${year}`);
+        setArchiveError('');
+        try {
+            await restoreYear(year);
+            setArchivedYears((prev) => prev.filter((y) => y !== year));
+        } catch (err) {
+            setArchiveError(err.message || 'تعذر استعادة السنة المالية');
+        } finally {
+            setRestoringKey(null);
+        }
+    }
     async function handleAddYear(e) {
         e.preventDefault();
         setYearError('');
@@ -102,22 +160,14 @@ export default function SettingsPage() {
     }
 
     async function handleDeleteYear(year) {
-        // Safety net: always take a fresh backup before a destructive year
-        // deletion. If the backup itself fails, abort rather than risk
-        // deleting data with no way to recover it.
-        try {
-            await downloadBackupFile();
-        } catch (err) {
-            alert(
-                'تعذر إنشاء نسخة احتياطية تلقائية قبل الحذف، لذلك تم إلغاء العملية حفاظاً على سلامة البيانات.\n' +
-                    (err.message || '')
-            );
-            return;
-        }
-
+        // Soft delete (archive_year RPC): the year and every deduction/
+        // employee_years row tied to it are left completely intact — only
+        // hidden. No forced pre-delete backup needed anymore, since there
+        // is nothing irreversible here; it can be undone any time from
+        // "أرشيف السنوات المالية" below.
         if (
             !window.confirm(
-                'تنبيه: سيتم حذف كل الأيام المضافة والخصومات المرتبطة بهذه السنة نهائياً لجميع الموظفين. لحماية بياناتك، تم تنزيل نسخة احتياطية (JSON) تلقائياً للتو. هل أنت متأكد من الاستمرار في الحذف؟'
+                `سيختفي السنة ${year} فوراً من كل الشاشات والتقارير، لكن جميع الأيام المضافة والخصومات المرتبطة بها لكل الموظفين تبقى محفوظة بأمان ويمكن استعادتها لاحقاً من "أرشيف السنوات المالية" أدناه. هل تريد المتابعة؟`
             )
         )
             return;
@@ -309,6 +359,101 @@ export default function SettingsPage() {
                         onChange={handleImportFile}
                     />
                 </div>
+            </div>
+
+            <div className="panel">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', marginBottom: archiveOpen ? '1.25rem' : 0 }}>
+                    <h2 style={{ margin: 0 }}><i className="fas fa-box-archive"></i> أرشيف الموظفين والسنوات المالية</h2>
+                    <button type="button" className="btn btn-outline" onClick={toggleArchive}>
+                        <i className={`fas fa-chevron-${archiveOpen ? 'up' : 'down'}`}></i> {archiveOpen ? 'إخفاء الأرشيف' : 'عرض الأرشيف'}
+                    </button>
+                </div>
+
+                {archiveOpen && (
+                    <>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                            حذف موظف أو سنة مالية لا يمسح بياناتها فعلياً — فقط يخفيها من كل الشاشات والتقارير. تظهر هنا وتُستعاد بضغطة واحدة في أي وقت.
+                        </p>
+
+                        {archiveError && <div className="form-error">{archiveError}</div>}
+
+                        {archiveLoading ? (
+                            <div className="empty-state">جاري تحميل الأرشيف...</div>
+                        ) : (
+                            <>
+                                <h4 style={{ color: '#60a5fa', fontSize: '0.9rem', marginBottom: '0.6rem' }}>الموظفون المحذوفون</h4>
+                                {archivedEmployees.length === 0 ? (
+                                    <div className="empty-state" style={{ marginBottom: '1.25rem' }}>لا يوجد موظفون في الأرشيف.</div>
+                                ) : (
+                                    <div className="table-container" style={{ maxHeight: 'none', marginBottom: '1.25rem' }}>
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>الاسم</th>
+                                                    <th>الرقم الوظيفي</th>
+                                                    <th style={{ textAlign: 'center' }}>الإجراءات</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {archivedEmployees.map((emp) => (
+                                                    <tr key={emp.id}>
+                                                        <td style={{ fontWeight: 600 }}>{emp.name}</td>
+                                                        <td style={{ color: 'var(--text-muted)' }}>{emp.job_number || '-'}</td>
+                                                        <td style={{ textAlign: 'center' }}>
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-icon-text btn-outline"
+                                                                onClick={() => handleRestoreEmployee(emp)}
+                                                                disabled={restoringKey === `emp-${emp.id}`}
+                                                            >
+                                                                {restoringKey === `emp-${emp.id}` && <LoadingSpinner size={14} color="#10b981" style={{ marginLeft: 6 }} />}
+                                                                <i className="fas fa-rotate-left"></i> استعادة
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+
+                                <h4 style={{ color: '#60a5fa', fontSize: '0.9rem', marginBottom: '0.6rem' }}>السنوات المالية المحذوفة</h4>
+                                {archivedYears.length === 0 ? (
+                                    <div className="empty-state">لا توجد سنوات مالية في الأرشيف.</div>
+                                ) : (
+                                    <div className="table-container" style={{ maxHeight: 'none' }}>
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>السنة المالية</th>
+                                                    <th style={{ textAlign: 'center' }}>الإجراءات</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {archivedYears.map((year) => (
+                                                    <tr key={year}>
+                                                        <td style={{ fontWeight: 700, color: 'var(--emerald)' }}>سنة {year}</td>
+                                                        <td style={{ textAlign: 'center' }}>
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-icon-text btn-outline"
+                                                                onClick={() => handleRestoreYear(year)}
+                                                                disabled={restoringKey === `year-${year}`}
+                                                            >
+                                                                {restoringKey === `year-${year}` && <LoadingSpinner size={14} color="#10b981" style={{ marginLeft: 6 }} />}
+                                                                <i className="fas fa-rotate-left"></i> استعادة
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </>
+                )}
             </div>
 
             <div className="panel" style={{ borderColor: 'rgba(239, 68, 68, 0.35)' }}>

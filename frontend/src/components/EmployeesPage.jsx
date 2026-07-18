@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
-import { useLeaveData } from '../hooks/useLeaveData';
 import PageHeader from './PageHeader';
 import SearchBar from './SearchBar';
 import EmployeesTable from './EmployeesTable';
@@ -14,13 +13,16 @@ import FreezeModal from './modals/FreezeModal';
 import CustomConfirmModal from './modals/CustomConfirmModal';
 import { exportEmployeesToExcel } from '../utils/exportExcel';
 
-export default function EmployeesPage() {
+// `leaveData` is the single useLeaveData() instance owned by App.jsx and
+// shared with SettingsPage — see the comment in App.jsx for why this is
+// no longer called independently here.
+export default function EmployeesPage({ leaveData }) {
     const { canAdd, canFreeze, canEdit } = usePermissions();
     const {
         employees, years, settings, loading, error,
         addEmployee, updateEmployee, deleteEmployee, toggleFreeze,
         addDeduction, deleteDeduction,
-    } = useLeaveData();
+    } = leaveData;
 
     const [search, setSearch] = useState('');
     const [modal, setModal] = useState(null);
@@ -151,7 +153,7 @@ export default function EmployeesPage() {
             {confirmEmp && (
                 <CustomConfirmModal
                     title="حذف بيانات الموظف"
-                    message={`هل أنت متأكد من حذف بيانات الموظف: ${confirmEmp.name}؟\nسيتم حذف جميع أرصدته وسجل خصوماته نهائياً. لا يمكن التراجع عن هذا الإجراء.`}
+                    message={`هل أنت متأكد من حذف الموظف: ${confirmEmp.name}؟\nسيختفي الموظف فوراً من كل الشاشات والتقارير، لكن أرصدته وسجل خصوماته تبقى محفوظة بأمان ويمكن استعادته لاحقاً من "أرشيف الموظفين" في أساسيات النظام.`}
                     confirmLabel="نعم، احذف الموظف"
                     cancelLabel="إلغاء"
                     busy={deleteBusy}

@@ -103,7 +103,7 @@ export function printEmployeeStatement(employee) {
             .footer-note { margin-top: 50px; font-size: 12px; color: #333; text-align: right; font-weight: 500; }
             .statement-note { margin-top: 22px; padding: 12px 16px; border: 1.5px solid #000; border-radius: 6px; font-size: 13px; font-weight: 700; line-height: 1.9; text-align: right; background-color: #f7f7f7; }
             @media print {
-                @page { margin: 12mm; size: A4 portrait; }
+                @page { size: A4 portrait; margin: 10mm; }
                 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 0; }
                 .no-print { display: none; }
                 /* The deductions table + notes section must stay VISIBLE and
