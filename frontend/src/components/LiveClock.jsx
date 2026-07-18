@@ -1,28 +1,23 @@
 import { useEffect, useState } from 'react';
-import { getLibyaTime } from '../utils/libyaTime';
+import { getLibyaDisplayDate, getLibyaDisplayTime } from '../utils/libyaTime';
 
 // Live, auto-advancing clock showing Libya time. Ticks every second.
+// Tracks the REAL instant (`new Date()`) and formats it directly with a
+// single Tripoli conversion — never through getLibyaTime(), whose return
+// value must not be re-formatted with an explicit timeZone (see
+// libyaTime.js). That exact mistake previously made this clock show the
+// wrong time (and, near midnight, the wrong date) on any machine whose
+// own local zone wasn't already Africa/Tripoli.
 export default function LiveClock() {
-    const [now, setNow] = useState(getLibyaTime);
+    const [now, setNow] = useState(() => new Date());
 
     useEffect(() => {
-        const id = setInterval(() => setNow(getLibyaTime()), 1000);
+        const id = setInterval(() => setNow(new Date()), 1000);
         return () => clearInterval(id);
     }, []);
 
-    const dateStr = now.toLocaleDateString('ar-LY', {
-        timeZone: 'Africa/Tripoli',
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-    });
-    const timeStr = now.toLocaleTimeString('ar-LY', {
-        timeZone: 'Africa/Tripoli',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    });
+    const dateStr = getLibyaDisplayDate(now, { weekday: 'long' });
+    const timeStr = getLibyaDisplayTime(now);
 
     return (
         <div className="live-clock" title="التاريخ والوقت الحالي للنظام">

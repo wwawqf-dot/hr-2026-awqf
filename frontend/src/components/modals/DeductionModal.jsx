@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { calculateDeductionDays } from '../../utils/deductionDays';
-import { getLibyaDateStr, getAccrualLabel, getAccruedDays } from '../../utils/libyaTime';
+import { getLibyaDateStr, getAccrualLabel, getAccruedDays, getLibyaYear } from '../../utils/libyaTime';
 import { computeFifoAudit } from '../../utils/leaveCalc';
 import CustomConfirmModal from './CustomConfirmModal';
 
@@ -27,7 +27,7 @@ function daysBetween(fromStr, toStr) {
 
 function computeNetBalance(employee, monthlyRate) {
     if (employee.is_unpaid_leave) return 0;
-    const currentYear = String(new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date()));
+    const currentYear = getLibyaYear();
     const initial = parseFloat(employee.initial_carried_forward) || 0;
     const yearsData = employee.years_data || {};
     let balance = initial;

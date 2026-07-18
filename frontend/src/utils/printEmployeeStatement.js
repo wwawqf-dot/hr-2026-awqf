@@ -1,5 +1,5 @@
 import { formatDateDisplay } from './formatDate.js';
-import { getLibyaTime, getAccrualLabel, getAccruedDays, getLibyaYear } from './libyaTime.js';
+import { getLibyaDisplayDate, getAccrualLabel, getAccruedDays, getLibyaYear } from './libyaTime.js';
 
 function computeNetCumulative(employee) {
     if (employee.is_unpaid_leave) return 0;
@@ -42,9 +42,9 @@ export function printEmployeeStatement(employee) {
         return;
     }
 
-    const formattedDate = getLibyaTime().toLocaleDateString('ar-LY', {
-        timeZone: 'Africa/Tripoli', year: 'numeric', month: 'long', day: 'numeric',
-    });
+    // Single Tripoli conversion from the real instant — see libyaTime.js;
+    // getLibyaTime().toLocaleDateString(timeZone:...) double-converts.
+    const formattedDate = getLibyaDisplayDate(new Date());
     const isUnpaid = employee.is_unpaid_leave === true;
     const netCumulative = computeNetCumulative(employee);
     const prevCarry = computePreviousCarryOver(employee, years);

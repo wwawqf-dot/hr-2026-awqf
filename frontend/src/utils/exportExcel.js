@@ -1,10 +1,9 @@
 import * as XLSX from 'xlsx';
-import { getAccruedDays } from './libyaTime';
-import { computeYearlyLedger } from './leaveCalc';
-import { getLibyaDateStr } from './libyaTime';
+import { getLibyaDateStr, getLibyaYear } from './libyaTime.js';
+import { computeYearlyLedger } from './leaveCalc.js';
 
 export function exportEmployeesToExcel(employees, years) {
-    const realLibyaYear = Number(new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date()));
+    const realLibyaYear = Number(getLibyaYear());
     const rows = employees.map((emp, index) => {
         const monthlyRate = emp.over_45 ? 3.75 : 2.5;
         const ledger = computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);

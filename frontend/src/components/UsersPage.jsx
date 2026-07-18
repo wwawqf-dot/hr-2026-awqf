@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { formatLibyaTimestamp } from '../utils/libyaTime';
 import PageHeader from './PageHeader';
 import LoadingSpinner from './LoadingSpinner';
 import { TableSkeleton } from './SkeletonLoader';
@@ -261,7 +262,7 @@ export default function UsersPage() {
                                                 )}
                                             </td>
                                             <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-                                                {new Date(u.createdAt).toLocaleDateString('ar-LY')}
+                                                {formatLibyaTimestamp(u.createdAt, { hour: undefined, minute: undefined })}
                                             </td>
                                             <td style={{ textAlign: 'center' }}>
                                                 {!isRoot ? (

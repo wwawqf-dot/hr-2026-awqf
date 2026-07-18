@@ -1,11 +1,14 @@
 import { Fragment, useMemo } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
-import { getLastDayPrevMonthStr, getAccruedDays } from '../utils/libyaTime';
+import { getLastDayPrevMonthStr, getLibyaYear } from '../utils/libyaTime';
 import { computeYearlyLedger } from '../utils/leaveCalc';
 
 export default function EmployeesTable({ employees, years, onDeduct, onEdit, onDelete }) {
     const { canDeduct, canEdit, canDelete } = usePermissions();
-    const realLibyaYear = Number(new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date()));
+    // Always through the central Tripoli-locked utility — never an inline
+    // Intl.DateTimeFormat duplicate (there were three of these scattered
+    // across the app; consolidated to one source of truth).
+    const realLibyaYear = Number(getLibyaYear());
 
     const sortedEmployees = useMemo(
         () => [...employees].sort((a, b) => (a.is_frozen ? 1 : 0) - (b.is_frozen ? 1 : 0)),

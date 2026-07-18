@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { formatLibyaTimestamp } from '../utils/libyaTime';
 import PageHeader from './PageHeader';
 import { TableSkeleton } from './SkeletonLoader';
 
@@ -45,7 +46,7 @@ export default function AuditPage() {
                                 {log.map((entry) => (
                                     <tr key={entry.id}>
                                         <td style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                                            {new Date(entry.timestamp).toLocaleString('ar-LY')}
+                                            {formatLibyaTimestamp(entry.timestamp)}
                                         </td>
                                         <td style={{ fontWeight: 600 }}>{entry.username}</td>
                                         <td>

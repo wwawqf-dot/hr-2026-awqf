@@ -1,5 +1,5 @@
 import { formatDateDisplay } from './formatDate.js';
-import { getLibyaTime, getAccrualLabel } from './libyaTime.js';
+import { getLibyaDisplayDate, getAccrualLabel, getLibyaYear } from './libyaTime.js';
 import { computeYearlyLedger } from './leaveCalc.js';
 
 export function printReport(selectedYear, years, employees, openingBalanceDate) {
@@ -10,11 +10,15 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
         return;
     }
 
-    const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
-    const formattedDate = getLibyaTime().toLocaleDateString('ar-LY', { ...dateOptions, timeZone: 'Africa/Tripoli' });
+    // Single Tripoli conversion straight from the real instant — do NOT
+    // route this through getLibyaTime().toLocaleDateString(timeZone:...),
+    // which double-converts and can print the wrong calendar day (proven:
+    // an admin whose machine isn't already in Africa/Tripoli would see the
+    // issue date shifted, occasionally to the wrong day near midnight).
+    const formattedDate = getLibyaDisplayDate(new Date());
     const carriedLabel = `المرحل حتى ${formatDateDisplay(openingBalanceDate)}`;
     const accrualLabel = getAccrualLabel();
-    const realLibyaYear = new Intl.DateTimeFormat('en', { timeZone: 'Africa/Tripoli', year: 'numeric' }).format(new Date());
+    const realLibyaYear = getLibyaYear();
 
     const fixedColumnCount = 4;
     const yearColumnCount = isAllYears ? years.length * 4 : 4;
