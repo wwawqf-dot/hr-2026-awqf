@@ -52,7 +52,7 @@ export default function RegistrationPortal() {
             if (error) throw error;
             if (!data?.user) throw new Error('تعذر إنشاء الحساب');
 
-            try { await api.consumeInviteCode(urlCode); } catch (_) {}
+            try { await api.consumeInviteCode(urlCode); } catch (_) { console.warn('[Register] فشل استهلاك رمز الدعوة:', _.message); }
 
             await supabase.auth.signOut();
             localStorage.clear();
