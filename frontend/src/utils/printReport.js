@@ -2,6 +2,11 @@ import { formatDateDisplay } from './formatDate.js';
 import { getLibyaDisplayDate, getAccrualLabel, getLibyaYear } from './libyaTime.js';
 import { computeYearlyLedger } from './leaveCalc.js';
 
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export function printReport(selectedYear, years, employees, openingBalanceDate) {
     const isAllYears = selectedYear === 'all';
     const printWindow = window.open('', '_blank');
@@ -137,10 +142,10 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
         html += `
             <tr>
                 <td>${index + 1}</td>
-                <td class="name-col">${emp.name}${emp.is_unpaid_leave ? ' <span style="color:#dc2626;font-size:0.8em;">(بدون مرتب)</span>' : ''}</td>
-                <td style="text-align: center; direction: ltr;">${emp.job_number || '-'}</td>
-                <td>${emp.national_id || '-'}</td>
-                <td>${emp.job_title || '-'}</td>
+                <td class="name-col">${escapeHtml(emp.name)}${emp.is_unpaid_leave ? ' <span style="color:#dc2626;font-size:0.8em;">(بدون مرتب)</span>' : ''}</td>
+                <td style="text-align: center; direction: ltr;">${escapeHtml(emp.job_number) || '-'}</td>
+                <td>${escapeHtml(emp.national_id) || '-'}</td>
+                <td>${escapeHtml(emp.job_title) || '-'}</td>
         `;
 
         // Normal employees: a genuinely-zero added/deducted cell prints as

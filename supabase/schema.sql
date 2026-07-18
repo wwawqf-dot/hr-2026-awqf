@@ -1091,15 +1091,20 @@ create policy profiles_admin_write on public.profiles for all to authenticated
 
 -- employees / years / settings: any logged-in user may READ; only admin
 -- may write directly. (Deductions & reconciliation still go via RPCs.)
+-- Archived rows are readable ONLY through list_archived_employees()
+-- (SECURITY DEFINER, bypasses RLS as the table owner) — never via a
+-- direct table read, regardless of caller role. This is what makes the
+-- "invisible everywhere" guarantee of the soft-delete architecture hold
+-- for direct REST access too, not just through list_employees().
 drop policy if exists employees_select on public.employees;
-create policy employees_select on public.employees for select to authenticated using (true);
+create policy employees_select on public.employees for select to authenticated using (is_archived = false);
 drop policy if exists employees_admin_write on public.employees;
 create policy employees_admin_write on public.employees for all to authenticated
     using (public.current_app_role() = 'admin')
     with check (public.current_app_role() = 'admin');
 
 drop policy if exists years_select on public.years;
-create policy years_select on public.years for select to authenticated using (true);
+create policy years_select on public.years for select to authenticated using (is_archived = false);
 drop policy if exists years_admin_write on public.years;
 create policy years_admin_write on public.years for all to authenticated
     using (public.current_app_role() = 'admin')
@@ -1116,10 +1121,18 @@ create policy settings_admin_write on public.settings for all to authenticated
 -- inside a SECURITY DEFINER function, so counters can never desync and
 -- business rules can never be bypassed from the browser.
 drop policy if exists employee_years_select on public.employee_years;
-create policy employee_years_select on public.employee_years for select to authenticated using (true);
+create policy employee_years_select on public.employee_years for select to authenticated
+    using (exists (
+        select 1 from public.employees e
+        where e.id = employee_years.employee_id and e.is_archived = false
+    ));
 
 drop policy if exists deductions_select on public.deductions;
-create policy deductions_select on public.deductions for select to authenticated using (true);
+create policy deductions_select on public.deductions for select to authenticated
+    using (exists (
+        select 1 from public.employees e
+        where e.id = deductions.employee_id and e.is_archived = false
+    ));
 
 -- audit_log: admin may read; nobody writes directly (log_action only).
 drop policy if exists audit_admin_select on public.audit_log;
@@ -1353,15 +1366,22 @@ create policy "authenticated can read invite_codes"
     to authenticated
     using (true);
 
-create policy "authenticated can insert invite_codes"
+-- Admin-only writes: generate_invite_code()/consume_invite_code() are
+-- SECURITY DEFINER and run as the table owner, so they bypass RLS
+-- entirely and are unaffected by this. This policy only stops a
+-- non-admin session from writing to the table directly over REST,
+-- bypassing those RPCs (e.g. minting its own invite codes or reviving
+-- an already-used one).
+create policy "admin can insert invite_codes"
     on public.invite_codes for insert
     to authenticated
-    with check (true);
+    with check (public.current_app_role() = 'admin');
 
-create policy "authenticated can update invite_codes"
+create policy "admin can update invite_codes"
     on public.invite_codes for update
     to authenticated
-    using (true);
+    using (public.current_app_role() = 'admin')
+    with check (public.current_app_role() = 'admin');
 
 -- Generate a new invite code. Admin only (checked by app role).
 create or replace function public.generate_invite_code(p_role text)
