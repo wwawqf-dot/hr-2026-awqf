@@ -228,34 +228,33 @@ $$;
 -- Unified weekend rule for ALL employees: Friday(5) + Saturday(6) only.
 drop function if exists public.calculate_deduction_days(text, text, numeric);
 drop function if exists public.calculate_deduction_days(text, text, numeric, boolean);
+drop function if exists public.calculate_deduction_days(date, date, numeric);
+drop function if exists public.calculate_deduction_days(date, date, integer);
+drop function if exists public.calculate_deduction_days(timestamp, timestamp, numeric);
 create or replace function public.calculate_deduction_days(
-    p_start text, p_end text, p_custom_holidays numeric default 0
+    start_date date,
+    end_date   date,
+    custom_holidays numeric default 0
 ) returns numeric
 language plpgsql
 immutable
 as $$
 declare
-    d_start date; d_end date; cur date; cnt int := 0; wd int;
+    cur date; cnt int := 0; wd int;
 begin
-    if p_start is null or p_end is null or p_start = '' or p_end = '' then
+    if start_date is null or end_date is null then
         return 0;
     end if;
-    begin
-        d_start := p_start::date;
-        d_end   := p_end::date;
-    exception when others then
-        return 0;
-    end;
-    if d_end < d_start then return 0; end if;
+    if end_date < start_date then return 0; end if;
 
-    cur := d_start;
-    while cur <= d_end loop
+    cur := start_date;
+    while cur <= end_date loop
         wd := extract(dow from cur)::int;
         if wd != 5 and wd != 6 then cnt := cnt + 1; end if;
         cur := cur + 1;
     end loop;
 
-    return greatest(0, cnt - coalesce(p_custom_holidays, 0));
+    return greatest(0, cnt - coalesce(custom_holidays, 0));
 end;
 $$;
 
@@ -317,7 +316,7 @@ begin
             raise exception 'لا يمكن تسجيل الإجازة: تاريخ الإجازة يقع خارج السنة المالية النشطة حالياً. يرجى إغلاق السنة الحالية أو تفعيل السنة المناسبة.';
         end if;
         v_year := v_start_year;
-        v_days := public.calculate_deduction_days(p_start, p_end, p_holidays);
+        v_days := public.calculate_deduction_days(p_start::date, p_end::date, p_holidays);
         if v_days <= 0 then
             raise exception 'يجب أن يكون عدد أيام الخصم أكبر من صفر';
         end if;
