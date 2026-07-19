@@ -4,9 +4,6 @@ import { getAccruedDays, getLibyaYear } from './libyaTime.js';
 // simulation can verify exactly what the live system would render on a
 // given future date — see tests/yearFlipSimulation.js.
 export function computeYearlyLedger(employee, years, realLibyaYear, monthlyRate, now = new Date()) {
-    if (employee.is_unpaid_leave) {
-        return years.map((year) => ({ year, opening: 0, added: 0, deducted: 0, closing: 0 }));
-    }
     const ceiledAtYear = employee.carryover_ceiled_at_year;
     const ceiledBalance = parseFloat(employee.ceiled_cumulative_balance) || null;
     let opening = parseFloat(employee.initial_carried_forward) || 0;
@@ -26,7 +23,12 @@ export function computeYearlyLedger(employee, years, realLibyaYear, monthlyRate,
         const yd = employee.years_data?.[yearStr] || { added: 0, deducted: 0 };
         let added = parseFloat(yd.added) || 0;
         if (Number(yearStr) === Number(realLibyaYear)) {
-            added = getAccruedDays(Number(realLibyaYear), monthlyRate, employee.hire_date_current_year, now);
+            // For unpaid leave the current year's accrual is frozen, but
+            // the historical `initial_carried_forward` and past years'
+            // added/deducted remain intact so the ledger is accurate.
+            added = employee.is_unpaid_leave
+                ? 0
+                : getAccruedDays(Number(realLibyaYear), monthlyRate, employee.hire_date_current_year, now);
         }
         const deducted = parseFloat(yd.deducted) || 0;
         // toFixed(2): the 45-day track's 3.75/month rate needs two decimal
@@ -40,10 +42,9 @@ export function computeYearlyLedger(employee, years, realLibyaYear, monthlyRate,
 }
 
 // FIFO audit: deduct from previous years' carry-over BEFORE current year.
+// For unpaid leave, only the current year's accrual is 0 — historical
+// carry-over and past years' balances are still visible.
 export function computeFifoAudit(employee, years, monthlyRate = 2.5, now = new Date()) {
-    if (employee.is_unpaid_leave) {
-        return { previousCarryOver: 0, accruedDays: 0, totalDeducted: 0, consumedFromPrev: 0, consumedFromCurrent: 0, legalNet: 0 };
-    }
     const currentYear = Number(getLibyaYear(now));
     let previousCarryOver = parseFloat(employee.initial_carried_forward) || 0;
 
@@ -54,7 +55,11 @@ export function computeFifoAudit(employee, years, monthlyRate = 2.5, now = new D
     }
     previousCarryOver = Math.max(0, previousCarryOver);
 
-    const accruedDays = getAccruedDays(currentYear, monthlyRate, employee.hire_date_current_year, now);
+    // Unpaid leave: the employee's historical carry-over is preserved for
+    // the FIFO audit, but the current year accrual is frozen at 0.
+    const accruedDays = employee.is_unpaid_leave
+        ? 0
+        : getAccruedDays(currentYear, monthlyRate, employee.hire_date_current_year, now);
     const totalDeducted = parseFloat(employee.years_data?.[currentYear]?.deducted) || 0;
 
     // FIFO: consume previous carry-over first, then current year accrual

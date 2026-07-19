@@ -4,7 +4,7 @@ export default function SearchBar({ value, onChange }) {
             <i className="fas fa-search"></i>
             <input
                 type="text"
-                placeholder="بحث سريع عن طريق الاسم أو الرقم الوطني..."
+                placeholder="البحث بالاسم أو الرقم الوظيفي..."
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
             />

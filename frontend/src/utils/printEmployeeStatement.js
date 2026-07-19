@@ -2,23 +2,27 @@ import { formatDateDisplay } from './formatDate.js';
 import { getLibyaDisplayDate, getAccrualLabel, getAccruedDays, getLibyaYear } from './libyaTime.js';
 
 function computeNetCumulative(employee) {
-    if (employee.is_unpaid_leave) return 0;
     const currentYear = getLibyaYear();
     const monthlyRate = employee.over_45 ? 3.75 : 2.5;
     const initial = parseFloat(employee.initial_carried_forward) || 0;
     const yearsData = employee.years_data || {};
     let balance = initial;
     for (const [year, yd] of Object.entries(yearsData)) {
-        balance += (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0);
+        if (year === currentYear) {
+            // Phantom balance prevention: dynamic accrual for current year
+            balance += (employee.is_unpaid_leave ? 0 : getAccruedDays(Number(currentYear), monthlyRate, employee.hire_date_current_year))
+                       - (parseFloat(yd?.deducted) || 0);
+        } else {
+            balance += (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0);
+        }
     }
     if (!yearsData[currentYear]) {
-        balance += getAccruedDays(Number(currentYear), monthlyRate, employee.hire_date_current_year);
+        balance += employee.is_unpaid_leave ? 0 : getAccruedDays(Number(currentYear), monthlyRate, employee.hire_date_current_year);
     }
     return balance;
 }
 
 function computePreviousCarryOver(employee, years) {
-    if (employee.is_unpaid_leave) return 0;
     const currentYear = getLibyaYear();
     let carry = parseFloat(employee.initial_carried_forward) || 0;
     for (const y of years) {
@@ -50,14 +54,14 @@ export function printEmployeeStatement(employee) {
     const prevCarry = computePreviousCarryOver(employee, years);
     const monthlyRate = employee.over_45 ? 3.75 : 2.5;
     const accruedLabel = getAccrualLabel();
-    // Explicit force-zero for an unpaid-leave employee: computeNetCumulative
-    // and computePreviousCarryOver already guard themselves, but these two
-    // summary figures were computed independently and did NOT check
-    // is_unpaid_leave — so a frozen-at-zero employee's statement still
-    // showed their real accrued days and real total deducted. Force both
-    // to exactly 0 here, at the point they're prepared for the printout.
-    const accruedDays = isUnpaid ? 0 : getAccruedDays(Number(getLibyaYear()), monthlyRate, employee.hire_date_current_year);
-    const totalDeducted = isUnpaid ? 0 : Object.values(employee.years_data || {}).reduce((sum, yd) => sum + (parseFloat(yd?.deducted) || 0), 0);
+    // Unpaid leave freezes the current year's accrual, but historical
+    // carry-over and total deductions across all years remain visible.
+    const accruedDays = isUnpaid
+        ? 0
+        : getAccruedDays(Number(getLibyaYear()), monthlyRate, employee.hire_date_current_year);
+    const totalDeducted = Object.values(employee.years_data || {}).reduce(
+        (sum, yd) => sum + (parseFloat(yd?.deducted) || 0), 0
+    );
     const history = employee.deductions_history || [];
 
     const rowsHtml = history.length === 0

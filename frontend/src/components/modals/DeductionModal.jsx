@@ -28,15 +28,40 @@ function daysBetween(fromStr, toStr) {
 }
 
 function computeNetBalance(employee, monthlyRate) {
-    if (employee.is_unpaid_leave) return 0;
+    if (employee.is_unpaid_leave) {
+        // Unpaid leave: only the CURRENT year's accrual is frozen at 0.
+        // Historical carry-forward and past years' net are preserved so
+        // the balance reflects what the employee would have had.
+        const currentYear = getLibyaYear();
+        const initial = parseFloat(employee.initial_carried_forward) || 0;
+        const yearsData = employee.years_data || {};
+        let balance = initial;
+        for (const [year, yd] of Object.entries(yearsData)) {
+            if (year === currentYear) {
+                balance -= (parseFloat(yd?.deducted) || 0);
+            } else {
+                balance += (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0);
+            }
+        }
+        return balance;
+    }
     const currentYear = getLibyaYear();
     const initial = parseFloat(employee.initial_carried_forward) || 0;
     const yearsData = employee.years_data || {};
     let balance = initial;
     for (const [year, yd] of Object.entries(yearsData)) {
-        balance += (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0);
+        if (year === currentYear) {
+            // Phantom balance prevention: use the DYNAMICALLY accrued days
+            // for the current year instead of the full-year allocation
+            // stored in the DB (e.g. 30 even in June when only 15 have
+            // been earned). This ensures the guard blocks deductions
+            // that would borrow from future unearned months.
+            balance += getAccruedDays(Number(currentYear), monthlyRate, employee.hire_date_current_year)
+                       - (parseFloat(yd?.deducted) || 0);
+        } else {
+            balance += (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0);
+        }
     }
-    // Add dynamic accrual for current year if not yet stored in DB
     if (!yearsData[currentYear]) {
         balance += getAccruedDays(Number(currentYear), monthlyRate, employee.hire_date_current_year);
     }
@@ -131,8 +156,13 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
             const dup = (employee.deductions_history || []).find(d => !d.start && Number(d.days) === Number(unknownDays));
             if (dup) { setError('هذا الخصم مسجل مسبقاً'); return; }
         } else {
-            const dup = (employee.deductions_history || []).find(d => d.start === start && d.end === end);
-            if (dup) { setError('هذا الخصم مسجل مسبقاً'); return; }
+            const dup = (employee.deductions_history || []).find(
+                d => d.start && d.end &&
+                     String(d.year) === startYear &&
+                     d.start <= end &&
+                     d.end >= start
+            );
+            if (dup) { setError('يوجد تداخل زمني مع إجازة أخرى مسجلة مسبقاً لهذا الموظف. الأيام محجوزة.'); return; }
         }
 
         setSaving(true);

@@ -78,9 +78,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                         // the zero-out can never silently regress if that
                         // utility is ever refactored without this call site
                         // in mind.
-                        const enrichedLedger = emp.is_unpaid_leave === true
-                            ? years.map((year) => ({ year, opening: 0, added: 0, deducted: 0, closing: 0 }))
-                            : computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
+                        const enrichedLedger = computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
 
                         return (
                             <tr key={emp.id} style={emp.is_frozen ? { opacity: 0.6 } : undefined}>
@@ -90,7 +88,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                                         {emp.name}{' '}
                                         {emp.over_45 && <span className="tag-warning">+45 سنة</span>}
                                         {emp.is_frozen && <span className="tag-danger">مُجمّد</span>}
-                                        {emp.is_unpaid_leave && <span className="tag-unpaid" title="إجازة بدون مرتب — الرصيد مجمّد">إجازة بدون مرتب</span>}
+                                        {emp.is_unpaid_leave && <span className="tag-unpaid" title="إجازة بدون مرتب — الرصيد التراكمي محفوظ، استحقاق السنة الحالية مجمّد">إجازة بدون مرتب</span>}
                                     </div>
                                     <div className="emp-job-row">{emp.job_number || '-'}</div>
                                 </td>

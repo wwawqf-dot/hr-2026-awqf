@@ -131,13 +131,7 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
     printableEmployees.forEach((emp, index) => {
         const isUnpaid = emp.is_unpaid_leave === true;
         const monthlyRate = emp.over_45 ? 3.75 : 2.5;
-        // Explicit force-zero here too (see EmployeesTable.jsx) — the print
-        // report prepares its own row data independently of the live table,
-        // so it needs its own explicit guard rather than trusting that
-        // whatever computeYearlyLedger does internally is enough.
-        const ledger = isUnpaid
-            ? years.map((year) => ({ year, opening: 0, added: 0, deducted: 0, closing: 0 }))
-            : computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
+        const ledger = computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
 
         html += `
             <tr>

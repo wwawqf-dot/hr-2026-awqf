@@ -35,7 +35,7 @@ export default function EmployeesPage({ leaveData }) {
         const q = search.trim().toLowerCase();
         if (!q) return employees;
         return employees.filter(
-            (e) => e.name.toLowerCase().includes(q) || (e.national_id || '').toLowerCase().includes(q)
+            (e) => e.name.toLowerCase().includes(q) || (e.job_number || '').toLowerCase().includes(q)
         );
     }, [employees, search]);
 

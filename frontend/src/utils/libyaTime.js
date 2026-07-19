@@ -113,24 +113,32 @@ export function getAccrualLabel(now = new Date()) {
 
 // Days accrued for `year` as of `now`: completed months × the age-based
 // monthly rate (2.5 => max 30/yr, 3.75 => max 45/yr), with the 15th-day
-// hire-date rule applied only when `year` is the currently active year.
+// hire-date rule applied only when the hire date's year matches the
+// financial year being computed — after a year rollover the employee
+// switches to standard accrual (no more proration).
 export function getAccruedDays(year, monthlyRate = 2.5, hireDateCurrentYear = null, now = new Date()) {
     const targetYear = Number(year);
     const { year: currentYear, month: currentMonth } = getLibyaFields(now);
 
     if (hireDateCurrentYear && targetYear === currentYear) {
-        const cutoffMonth = currentMonth - 1;
-        const [, hireMonthStr, hireDayStr] = hireDateCurrentYear.split('-');
-        const hireMonth = Number(hireMonthStr);
-        const hireDay = Number(hireDayStr);
-        if (hireMonth > cutoffMonth) return 0;
-        const firstMonth = hireDay > 15 ? hireMonth + 1 : hireMonth;
-        if (firstMonth > cutoffMonth) return 0;
-        const months = cutoffMonth - firstMonth + 1;
-        // toFixed(2), not (1): the 45-day track's 3.75/month rate needs two
-        // decimal places (3.75, 7.5, 11.25, ...) — rounding to one decimal
-        // silently mangles 3.75 into 3.8.
-        return +(months * monthlyRate).toFixed(2);
+        const hireYear = Number(String(hireDateCurrentYear).split('-')[0]);
+        // If the employee was hired in a PREVIOUS year, their accrual
+        // has rolled over — they are a regular employee now, not a
+        // mid-year hire. Fall through to the standard calculation below.
+        if (hireYear === targetYear) {
+            const cutoffMonth = currentMonth - 1;
+            const [, hireMonthStr, hireDayStr] = hireDateCurrentYear.split('-');
+            const hireMonth = Number(hireMonthStr);
+            const hireDay = Number(hireDayStr);
+            if (hireMonth > cutoffMonth) return 0;
+            const firstMonth = hireDay > 15 ? hireMonth + 1 : hireMonth;
+            if (firstMonth > cutoffMonth) return 0;
+            const months = cutoffMonth - firstMonth + 1;
+            // toFixed(2), not (1): the 45-day track's 3.75/month rate needs two
+            // decimal places (3.75, 7.5, 11.25, ...) — rounding to one decimal
+            // silently mangles 3.75 into 3.8.
+            return +(months * monthlyRate).toFixed(2);
+        }
     }
     return +(getAccruedMonths(targetYear, now) * monthlyRate).toFixed(2);
 }
