@@ -330,6 +330,19 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
                                             )}
                                             <td style={{ textAlign: 'center', color: 'var(--danger)', fontWeight: 'bold' }}>
                                                 {item.days} أيام
+                                                {item.officialHolidays > 0 && (
+                                                    <span style={{
+                                                        display: 'inline-block',
+                                                        backgroundColor: '#f1f5f9',
+                                                        color: '#475569',
+                                                        fontSize: '0.7rem',
+                                                        padding: '2px 8px',
+                                                        borderRadius: '999px',
+                                                        marginRight: 6,
+                                                        fontWeight: 400,
+                                                        whiteSpace: 'nowrap'
+                                                    }}>(يتضمن {item.officialHolidays} عطلة)</span>
+                                                )}
                                                 {item.deductionSource && (
                                                     <span style={{ fontSize: '0.65rem', fontWeight: 400, color: 'var(--text-muted)', marginRight: 4 }}>{item.deductionSource}</span>
                                                 )}
