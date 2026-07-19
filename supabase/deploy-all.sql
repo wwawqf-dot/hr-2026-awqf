@@ -1229,64 +1229,13 @@ grant execute on function public.wipe_all_employees()                           
 revoke delete on public.employees from authenticated;
 revoke delete on public.years from authenticated;
 
--- ---- User management RPCs (SECURITY DEFINER, admin-only UI) ----------
-create or replace function public.create_auth_user(
-    p_email    text,
-    p_password text,
-    p_role     text default 'data_entry'
-)
-returns json
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-    v_user_id uuid;
-    v_enc_pw  text;
-begin
-    if p_role not in ('data_entry', 'viewer') then
-        raise exception 'الصلاحية غير صالحة. يجب أن تكون data_entry أو viewer.';
-    end if;
-    if exists (select 1 from auth.users where email = p_email) then
-        raise exception 'المستخدم % موجود مسبقاً', p_email;
-    end if;
-
-    v_user_id := gen_random_uuid();
-    v_enc_pw  := crypt(p_password, gen_salt('bf'));
-
-    insert into auth.users (
-        id, instance_id, email, encrypted_password, email_confirmed_at,
-        raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
-        confirmation_token, email_change, email_change_token_new, recovery_token,
-        is_super_admin, role
-    ) values (
-        v_user_id,
-        '00000000-0000-0000-0000-000000000000',
-        p_email,
-        v_enc_pw,
-        now(),
-        jsonb_build_object('provider', 'email', 'providers', array['email']),
-        jsonb_build_object('role', p_role),
-        now(), now(),
-        '', '', '', '',
-        false, 'authenticated'
-    );
-
-    insert into auth.identities (
-        id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
-    ) values (
-        v_user_id,
-        v_user_id,
-        jsonb_build_object('sub', v_user_id, 'email', p_email),
-        'email',
-        p_email,
-        now(), now(), now()
-    );
-
-    return json_build_object('id', v_user_id::text, 'email', p_email, 'role', p_role);
-end;
-$$;
-
+-- ---- User management RPCs (SECURITY DEFINER, admin-only) -------------
+-- NOTE: user CREATION intentionally has no RPC. New accounts are created
+-- in the Supabase Dashboard (Authentication → Users) via the link in the
+-- UsersPage UI; the on_auth_user_created trigger then auto-provisions
+-- the profile row with the default 'viewer' role. A former
+-- create_auth_user() RPC was dropped: it had no role check and was
+-- granted to all authenticated users — a privilege-escalation hole.
 create or replace function public.delete_auth_user(p_id uuid)
 returns void
 language plpgsql
@@ -1337,7 +1286,6 @@ begin
 end;
 $$;
 
-grant execute on function public.create_auth_user(text, text, text)   to authenticated;
 grant execute on function public.delete_auth_user(uuid)               to authenticated;
 grant execute on function public.update_user_role(uuid, text)         to authenticated;
 

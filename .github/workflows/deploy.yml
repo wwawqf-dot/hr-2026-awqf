@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages & Edge Function
+name: Deploy to GitHub Pages
 
 on:
   push:
@@ -31,25 +31,6 @@ jobs:
         run: |
           supabase db push \
             --project-ref uzmhsesmszngkanjsjgy
-
-  deploy-edge-function:
-    needs: []
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Deploy manage-users Edge Function
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: |
-          supabase functions deploy manage-users \
-            --project-ref uzmhsesmszngkanjsjgy \
-            --no-verify-jwt
 
   build:
     needs: []
