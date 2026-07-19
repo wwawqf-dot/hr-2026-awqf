@@ -34,9 +34,11 @@ export default function EmployeesPage({ leaveData }) {
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
         if (!q) return employees;
-        return employees.filter(
-            (e) => e.name.toLowerCase().includes(q) || (e.job_number || '').toLowerCase().includes(q)
-        );
+        return employees.filter((e) => {
+            const matchName = e.name && e.name.toLowerCase().includes(q);
+            const matchJobNumber = e.job_number && String(e.job_number).toLowerCase().includes(q);
+            return matchName || matchJobNumber;
+        });
     }, [employees, search]);
 
     function closeModal() {
