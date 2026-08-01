@@ -1,16 +1,18 @@
 import { daysToArabicWords, numberToArabicWords } from './arabicNumberWords.js';
-import { getLibyaDisplayDate } from './libyaTime.js';
+import { getLastDayPrevMonthStr, getLibyaDisplayDate } from './libyaTime.js';
 
-// The official "نموذج إجازة سنوية" form. It is an A4 SVG (595.2 × 841.92 pt)
-// holding the scanned form as a background image plus 11 `{{token}}` text
-// placeholders that we fill in below.
-const TEMPLATE_PATH = 'leave-template.svg';
+// The official "نموذج إجازة سنوية" form: an A4 SVG (595.2 × 841.92 pt) holding
+// the printed form as a background image plus 26 `{{token}}` text placeholders.
+const TEMPLATE_PATH = 'leave-template-v2.svg';
 // Tajawal is the only Arabic face bundled with the app. The template was
 // authored against fonts (Myriad Pro / thmanyah serif) that no browser has, so
 // every text node is re-pointed at Tajawal — embedded as a data URI so the SVG
 // stays self-contained when rasterised to PNG (a canvas render does not resolve
 // external @font-face URLs).
-const FONT_PATH = 'fonts/tajawal/tajawal-500-arabic.woff2';
+// The bold cut, not the regular one: only a single weight gets embedded, so
+// asking for bold against a 500-weight file would fall back to the browser's
+// synthetic smearing — which rasterises badly in the PNG export.
+const FONT_PATH = 'fonts/tajawal/tajawal-700-arabic.woff2';
 
 function asset(path) {
     // Vite's BASE_URL carries the GitHub Pages sub-path ('/hr-2026-awqf/') in
@@ -18,21 +20,58 @@ function asset(path) {
     return `${import.meta.env.BASE_URL}${path}`;
 }
 
-// Placeholder → where it sits on the form. `dx` nudges the anchor to the centre
-// of the blank: the template was laid out left-to-right around the literal
-// `{{token}}` string, so the midpoint is roughly half that token's width.
+// Placeholders are keyed by POSITION, not by token name: the template reuses
+// the same names for different fields ({{11}} is both the start and end day,
+// {{33}} is the day of all three "إلى غاية" dates), so names alone are
+// ambiguous. `dx` is half the placeholder's own rendered width, which recentres
+// the value over the blank the designer sized for it.
+//
+// `maxW` is how wide the value may grow before it would run past the blank and
+// over the form's own printed labels — measured off the background scan as
+// twice the smaller distance from the anchor to either end of the blank, so a
+// centred value stays inside it. Anything longer gets condensed to fit (see
+// fitToBlanks); this is what keeps a six-part name or a long job title from
+// printing on top of "الوظيفة".
+//
+// Date blanks read right-to-left on the paper — rightmost box is the day, then
+// the month, with the year leftmost (matching the pre-printed "14هـ"/"20م"
+// year markers elsewhere on the sheet).
 const FIELDS = {
-    th1:            { dx: 20, size: 11.42 }, // الرقم الوظيفي
-    employee_name:  { dx: 48, size: 11.42 }, // الاسم الرباعي
-    job_title:      { dx: 37, size: 11.42 }, // الوظيفة
-    leave_days:     { dx: 40, size: 11.42 }, // مدة الإجازة (يوم/أيام)
-    leave_22days:   { dx: 46, size: 11.42 }, // مدة الإجازة بالحروف
-    '22days':       { dx: 25, size: 10.08 }, // إجمالي الإجازة المستحقة — رقماً
-    leave_88days:   { dx: 46, size: 11.42 }, // إجمالي الإجازة المستحقة — بالحروف
-    '33days':       { dx: 25, size: 10.08 }, // مدة الإجازة المطلوبة — رقماً
-    leave_99days:   { dx: 46, size: 11.42 }, // مدة الإجازة المطلوبة — بالحروف
-    '55days':       { dx: 25, size: 10.08 }, // الرصيد المتبقي — رقماً
-    leave_977days:  { dx: 48, size: 11.42 }, // الرصيد المتبقي — بالحروف
+    '110.5,101.56':  { key: 'jobNumber',      dx: 21.6, size: 11.42, maxW: 120 },
+    '334.2,144.61':  { key: 'employeeName',   dx: 48.4, size: 11.42, maxW: 252 },
+    '110.82,144.61': { key: 'jobTitle',       dx: 30.0, size: 11.42, maxW: 155 },
+    '419.9,186.2':   { key: 'leaveDays',      dx: 36.3, size: 11.42, maxW: 118 },
+    '151.13,186.2':  { key: 'leaveDaysWords', dx: 45.5, size: 11.42, maxW: 156 },
+
+    // تاريخ بدء الإجازة
+    '455.75,207.86': { key: 'startDay',       dx: 10.4, size: 11.42 },
+    '425.4,207.86':  { key: 'startMonth',     dx: 10.4, size: 11.42 },
+    '365.49,207.86': { key: 'startYear',      dx: 16.5, size: 11.42 },
+    // تاريخ انتهاء الإجازة
+    '248.05,207.86': { key: 'endDay',         dx: 10.4, size: 11.42 },
+    '217.7,207.86':  { key: 'endMonth',       dx: 10.4, size: 11.42 },
+    '157.79,207.86': { key: 'endYear',        dx: 16.5, size: 11.42 },
+
+    // إجمالي الإجازة المستحقة ( رقم ) بالحروف ..... إلى غاية ../../..
+    '400.66,644.26': { key: 'entitledNum',    dx: 14.1, size: 10.08 },
+    '254.3,638.43':  { key: 'entitledWords',  dx: 45.5, size: 11.42, maxW: 136 },
+    '170.57,640.21': { key: 'cutoffDay',      dx: 13.0, size: 11.42 },
+    '134.73,640.21': { key: 'cutoffMonth',    dx: 14.7, size: 11.42 },
+    '74.95,640.21':  { key: 'cutoffYear',     dx: 23.2, size: 11.42 },
+
+    // مدة الإجازة المطلوبة
+    '412.72,665.32': { key: 'requestedNum',   dx: 14.1, size: 10.08 },
+    '262.34,658.93': { key: 'requestedWords', dx: 45.5, size: 11.42, maxW: 138 },
+    '177.41,658.93': { key: 'cutoffDay',      dx: 13.0, size: 11.42 },
+    '141.57,658.93': { key: 'cutoffMonth',    dx: 14.7, size: 11.42 },
+    '81.79,658.93':  { key: 'cutoffYear',     dx: 23.2, size: 11.42 },
+
+    // الرصيد المتبقي
+    '428.98,684.39': { key: 'remainingNum',   dx: 14.1, size: 10.08 },
+    '269.26,679.51': { key: 'remainingWords', dx: 48.4, size: 11.42, maxW: 150 },
+    '184.76,679.56': { key: 'cutoffDay',      dx: 13.0, size: 11.42 },
+    '148.92,679.56': { key: 'cutoffMonth',    dx: 14.7, size: 11.42 },
+    '89.14,679.56':  { key: 'cutoffYear',     dx: 23.2, size: 11.42 },
 };
 
 function escapeXml(value) {
@@ -64,8 +103,8 @@ async function fetchFontDataUri(url) {
  * Parsed as a document rather than string-replaced: Illustrator splits a single
  * label across several <tspan>s to apply kerning (`{{th` + `1` + `}}`), so the
  * token only exists in the element's combined textContent, never in the markup.
- * Tokens with no value are dropped so the blank line prints empty instead of
- * showing the raw placeholder.
+ * Placeholders with no value are dropped so the blank prints empty instead of
+ * showing the raw token.
  */
 function buildSvg(svgText, values, fontDataUri) {
     const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
@@ -74,17 +113,16 @@ function buildSvg(svgText, values, fontDataUri) {
     if (svg.querySelector('parsererror')) throw new Error('ملف القالب تالف أو غير صالح');
 
     for (const el of Array.from(doc.querySelectorAll('text'))) {
-        const token = (el.textContent || '').trim().match(/^\{\{([A-Za-z0-9_]+)\}\}$/);
-        if (!token) continue;
-
-        const cfg = FIELDS[token[1]];
-        const raw = values[token[1]];
-        const value = raw == null ? '' : String(raw).trim();
-        if (!cfg || !value) { el.remove(); continue; }
+        if (!/^\{\{[A-Za-z0-9_]+\}\}$/.test((el.textContent || '').trim())) continue;
 
         const translate = (el.getAttribute('transform') || '')
             .match(/translate\(\s*(-?[\d.]+)[\s,]+(-?[\d.]+)\s*\)/);
         if (!translate) { el.remove(); continue; }
+
+        const cfg = FIELDS[`${translate[1]},${translate[2]}`];
+        const raw = cfg && values[cfg.key];
+        const value = raw == null ? '' : String(raw).trim();
+        if (!cfg || !value) { el.remove(); continue; }
 
         el.removeAttribute('transform');
         el.setAttribute('x', (parseFloat(translate[1]) + cfg.dx).toFixed(2));
@@ -93,6 +131,7 @@ function buildSvg(svgText, values, fontDataUri) {
         el.setAttribute('direction', 'rtl');
         el.setAttribute('class', 'filled');
         el.setAttribute('style', `font-size:${cfg.size}px`);
+        if (cfg.maxW) el.dataset.maxw = String(cfg.maxW);
         el.textContent = value; // drops the kerning tspans along with the token
     }
 
@@ -104,27 +143,65 @@ function buildSvg(svgText, values, fontDataUri) {
         font-weight: 400 800;
       }
       text, tspan { font-family: 'TajawalEmbedded', 'Tajawal', sans-serif; }
-      text.filled { fill: #0b3d2e; font-weight: 600; }
+      text.filled { fill: #000000; font-weight: 700; }
     `;
     svg.insertBefore(style, svg.firstChild);
 
-    return new XMLSerializer().serializeToString(doc);
+    return svg;
+}
+
+/**
+ * Condense any value that outgrew its blank. Text length can only be measured
+ * once the SVG is in a rendered document with the font applied, so the sheet is
+ * mounted off-screen for the measurement pass and detached again afterwards.
+ */
+async function fitToBlanks(svg) {
+    const holder = document.createElement('div');
+    holder.setAttribute('aria-hidden', 'true');
+    holder.style.cssText = 'position:absolute;left:-10000px;top:0;width:600px;visibility:hidden';
+    holder.appendChild(svg);
+    document.body.appendChild(holder);
+
+    try {
+        // Without this the embedded face may still be loading and every
+        // measurement comes back as the fallback font's width.
+        if (document.fonts && document.fonts.ready) await document.fonts.ready;
+
+        for (const el of Array.from(svg.querySelectorAll('text.filled[data-maxw]'))) {
+            const maxW = parseFloat(el.dataset.maxw);
+            const width = el.getComputedTextLength();
+            if (width > maxW) {
+                el.setAttribute('textLength', maxW.toFixed(2));
+                el.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+            }
+            delete el.dataset.maxw;
+        }
+    } finally {
+        holder.remove();
+    }
+
+    return new XMLSerializer().serializeToString(svg);
 }
 
 /**
  * Build the finished form as an SVG string, ready to print or rasterise.
- * @param {object} data see buildLeaveRequestValues below
  */
 export async function renderLeaveRequestSvg(data) {
     const [template, fontDataUri] = await Promise.all([
         fetchText(asset(TEMPLATE_PATH)),
         fetchFontDataUri(asset(FONT_PATH)),
     ]);
-    return buildSvg(template, data, fontDataUri);
+    return fitToBlanks(buildSvg(template, data, fontDataUri));
+}
+
+// 'YYYY-MM-DD' → { day, month, year }; empty parts for a missing date.
+function splitIsoDate(iso) {
+    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    return parts ? { year: parts[1], month: parts[2], day: parts[3] } : { year: '', month: '', day: '' };
 }
 
 /**
- * Map a saved deduction onto the form's placeholders.
+ * Map a saved deduction onto the form's fields.
  *
  * @param {object} employee            the employee the leave belongs to
  * @param {object} deduction           { days, start, end, note }
@@ -135,18 +212,30 @@ export function buildLeaveRequestValues(employee, deduction, entitledBeforeDays)
     const entitled = Number(entitledBeforeDays) || 0;
     const remaining = entitled - requested;
 
+    const start = splitIsoDate(deduction.start);
+    const end = splitIsoDate(deduction.end);
+    // "إلى غاية" — the accrual cut-off, i.e. the last day of the month that has
+    // just closed, in Libya's timezone. Same helper the balance labels use.
+    const [cutoffDay, cutoffMonth, cutoffYear] = getLastDayPrevMonthStr().split('/');
+
     return {
-        th1: employee.job_number || '',
-        employee_name: employee.name || '',
-        job_title: employee.job_title || '',
-        leave_days: requested ? String(requested) : '',
-        leave_22days: daysToArabicWords(requested),
-        '22days': String(entitled),
-        leave_88days: numberToArabicWords(entitled),
-        '33days': String(requested),
-        leave_99days: numberToArabicWords(requested),
-        '55days': String(remaining),
-        leave_977days: numberToArabicWords(remaining),
+        jobNumber: employee.job_number || '',
+        employeeName: employee.name || '',
+        jobTitle: employee.job_title || '',
+        leaveDays: requested ? String(requested) : '',
+        leaveDaysWords: daysToArabicWords(requested),
+
+        startDay: start.day, startMonth: start.month, startYear: start.year,
+        endDay: end.day, endMonth: end.month, endYear: end.year,
+
+        entitledNum: String(entitled),
+        entitledWords: numberToArabicWords(entitled),
+        requestedNum: String(requested),
+        requestedWords: numberToArabicWords(requested),
+        remainingNum: String(remaining),
+        remainingWords: numberToArabicWords(remaining),
+
+        cutoffDay, cutoffMonth, cutoffYear,
     };
 }
 
