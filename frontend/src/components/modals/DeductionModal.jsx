@@ -4,6 +4,7 @@ import { calculateDeductionDays } from '../../utils/deductionDays';
 import { logActivity } from '../../api/client';
 import { getLibyaDateStr, getAccrualLabel, getAccruedDays, getLibyaYear } from '../../utils/libyaTime';
 import { computeFifoAudit } from '../../utils/leaveCalc';
+import { printLeaveRequest, downloadLeaveRequestImage } from '../../utils/printLeaveRequest';
 import CustomConfirmModal from './CustomConfirmModal';
 import LoadingSpinner from '../LoadingSpinner';
 
@@ -79,6 +80,11 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
     const [saving, setSaving] = useState(false);
     const [pendingDeleteId, setPendingDeleteId] = useState(null);
     const [deleting, setDeleting] = useState(false);
+    // Snapshot of the deduction that was just approved. The form clears itself
+    // on success, so the printed request has to be built from what was saved,
+    // not from the (now empty) inputs.
+    const [lastSaved, setLastSaved] = useState(null);
+    const [printing, setPrinting] = useState(false);
 
     const years = Object.keys(employee.years_data || {}).sort();
     const monthlyRate = employee.over_45 ? 3.75 : 2.5;
@@ -87,6 +93,7 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
     useEffect(() => {
         setStart(''); setEnd(''); setHolidays(0);
         setUnknownDays(''); setNote(''); setError('');
+        setLastSaved(null);
     }, [employee.id]);
 
     const hasUnknownDays = unknownDays !== '' && Number(unknownDays) > 0;
@@ -174,12 +181,35 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
                 await onSubmit(employee.id, { start, end, customHolidays: Number(holidays) || 0, note: noteVal });
             }
             logActivity('تسجيل إجازة', `تم تسجيل إجازة للموظف "${employee.name}" بعدد ${days} أيام`).catch(() => {});
+            // Captured before the reset below, and while `netBalance` still
+            // reflects the pre-deduction figure the form must show as
+            // "إجمالي الإجازة المستحقة".
+            setLastSaved({
+                days,
+                start: hasUnknownDays ? '' : start,
+                end: hasUnknownDays ? '' : end,
+                note: noteVal || '',
+                entitledBefore: netBalance,
+            });
             setStart(''); setEnd(''); setHolidays(0);
             setUnknownDays(''); setNote('');
         } catch (err) {
             setError(err.message || 'حدث خطأ أثناء تسجيل الخصم');
         } finally {
             setSaving(false);
+        }
+    }
+
+    async function handleLeaveRequest(action) {
+        if (!lastSaved) return;
+        setPrinting(true);
+        setError('');
+        try {
+            await action(employee, lastSaved, lastSaved.entitledBefore);
+        } catch (err) {
+            setError(err.message || 'تعذر إصدار نموذج طلب الإجازة');
+        } finally {
+            setPrinting(false);
         }
     }
 
@@ -297,6 +327,29 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
                         {saving ? 'جاري الحفظ...' : 'اعتماد الخصم'}
                     </button>
                 </form>
+
+                {lastSaved && (
+                    <div className="leave-request-panel">
+                        <div className="leave-request-head">
+                            <i className="fas fa-circle-check"></i>
+                            <span>
+                                تم اعتماد الخصم بنجاح ({lastSaved.days} يوم)
+                                {lastSaved.start ? ` — من ${lastSaved.start} إلى ${lastSaved.end}` : ''}
+                            </span>
+                        </div>
+                        <p className="leave-request-hint">يمكنك الآن إصدار نموذج الإجازة السنوية معبأً ببيانات الموظف.</p>
+                        <div className="leave-request-actions">
+                            <button type="button" className="btn btn-primary" disabled={printing}
+                                onClick={() => handleLeaveRequest(printLeaveRequest)}>
+                                <i className="fas fa-print"></i> طباعة طلب الإجازة
+                            </button>
+                            <button type="button" className="btn btn-outline" disabled={printing}
+                                onClick={() => handleLeaveRequest(downloadLeaveRequestImage)}>
+                                <i className="fas fa-download"></i> تنزيل الطلب (صورة)
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 <div className="history-section">
                     <h4 style={{ marginBottom: '0.75rem' }}><i className="fas fa-history"></i> سجل الخصومات للموظف</h4>
