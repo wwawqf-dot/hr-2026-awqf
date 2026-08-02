@@ -110,12 +110,6 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
     // Only the start date's year is checked, matching the backend RPC's
     // bucketing rule (register_deduction assigns the whole deduction to
     // the start date's year regardless of where the end date falls).
-    //
-    // Rolled back to this simple form along with the backend (see
-    // migrations/202608020005_rollback_ledger_and_split.sql) — the
-    // cross-year split this used to also allow for is backend-side again
-    // for now, so relaxing this client-side would just let a submission
-    // through that the server rejects.
     const activeYear = systemYears.length
         ? String(Math.max(...systemYears.map(Number)))
         : null;

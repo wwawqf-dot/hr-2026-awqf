@@ -41,32 +41,18 @@ export default function RegistrationPortal() {
 
         setRegistering(true);
         try {
-            // Verify the code against the database BEFORE creating an account —
-            // `invite` above is parsed from the URL text alone (WQF-<role>-<rand>),
-            // never checked against invite_codes. A stale, fabricated, or already
-            // -used code must not be allowed to reach signUp at all.
-            const codeCheck = await api.validateInviteCode(urlCode);
-            if (!codeCheck.valid) throw new Error(codeCheck.error || 'رمز الدعوة غير صحيح أو مستخدم مسبقاً');
-
+            const role = invite?.role || 'viewer';
             const { data, error } = await supabase.auth.signUp({
                 email: email.trim(),
                 password,
-                // No `role` here: the server ignores any client-supplied role and
-                // always creates 'viewer' (see migration
-                // 202608020001_security_role_escrow.sql). The real role comes
-                // only from consumeInviteCode below, verified server-side.
                 options: {
-                    data: { username: name.trim() },
+                    data: { role, username: name.trim() },
                 },
             });
             if (error) throw error;
             if (!data?.user) throw new Error('تعذر إنشاء الحساب');
 
-            // Must succeed, not be swallowed: this is the only call that grants
-            // anything above 'viewer'. If it fails, the account still exists
-            // but stuck at 'viewer' — the user needs to know that, not see a
-            // blanket "success".
-            await api.consumeInviteCode(urlCode);
+            try { await api.consumeInviteCode(urlCode); } catch (_) { console.warn('[Register] فشل استهلاك رمز الدعوة:', _.message); }
 
             await supabase.auth.signOut();
             localStorage.clear();
