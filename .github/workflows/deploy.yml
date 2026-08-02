@@ -28,9 +28,15 @@ jobs:
       - name: Apply database migrations
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        # `db push --project-ref` was removed from newer CLI versions — the
+        # project must be linked first, then pushed to. Linking alone (via
+        # SUPABASE_ACCESS_TOKEN, a management-API token) is not enough to
+        # apply SQL: db push opens a real Postgres connection, which needs
+        # the database password too — hence SUPABASE_DB_PASSWORD above.
         run: |
-          supabase db push \
-            --project-ref uzmhsesmszngkanjsjgy
+          supabase link --project-ref uzmhsesmszngkanjsjgy
+          supabase db push
 
   build:
     needs: []
