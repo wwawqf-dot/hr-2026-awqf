@@ -104,17 +104,30 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
     const retroBlocked = retroDaysLive !== null && retroDaysLive > RETRO_LIMIT_DAYS;
     const balanceBlocked = !employee.is_unpaid_leave && days > 0 && days > netBalance;
 
-    // Time Guard: a dated deduction must fall inside the currently active
-    // financial year (the latest year open in Settings) — never a closed
-    // prior year, even one still within the 40-day retroactive window.
-    // Only the start date's year is checked, matching the backend RPC's
-    // bucketing rule (register_deduction assigns the whole deduction to
-    // the start date's year regardless of where the end date falls).
+    // Time Guard: a dated deduction must normally fall inside the currently
+    // active financial year (the latest year open in Settings). Two narrow
+    // exceptions mirror what register_deduction actually accepts server-
+    // side (see migrations/202608020003_cross_year_leave_split.sql):
+    //   • forward split — starts in the active year, ends in the very next
+    //     one (e.g. Dec 29 -> Jan 5), even before that next year is opened.
+    //   • backdated correction — starts (and optionally ends) in the
+    //     immediately-preceding, now-archived year, within the same
+    //     40-day retroactive window checked below.
+    // This is a UX pre-check only; the backend re-validates and is the
+    // real authority — it will reject anything this misses.
     const activeYear = systemYears.length
         ? String(Math.max(...systemYears.map(Number)))
         : null;
+    const prevYear = activeYear ? String(Number(activeYear) - 1) : null;
+    const nextYear = activeYear ? String(Number(activeYear) + 1) : null;
     const startYear = !hasUnknownDays && start ? start.slice(0, 4) : null;
-    const yearMismatched = Boolean(startYear && activeYear && startYear !== activeYear);
+    const endYear = !hasUnknownDays && end ? end.slice(0, 4) : null;
+    const yearMismatched = Boolean(startYear && activeYear && !(
+        (startYear === activeYear && (endYear === activeYear || !endYear)) ||
+        (startYear === activeYear && endYear === nextYear) ||
+        (startYear === prevYear && (endYear === prevYear || !endYear)) ||
+        (startYear === prevYear && endYear === activeYear)
+    ));
 
     // FIFO split preview for this deduction
     const fifoPreview = useMemo(() => {
