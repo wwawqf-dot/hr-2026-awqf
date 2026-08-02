@@ -981,81 +981,6 @@ begin
 end;
 $$;
 
--- Bulk onboarding from a parsed Excel/CSV (ADMIN only) — mirrors the old
--- POST /employees/bulk. Rows need only a name; everything else defaults.
-create or replace function public.bulk_add_employees(p_rows jsonb, p_note text default '')
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-    v_role text; v_username text; v_years text[]; v_current text;
-    r jsonb; v_name text; v_id bigint; v_note text;
-    v_created int := 0; v_skipped int := 0; v_reconciled int := 0;
-    v_remaining numeric; v_consumed numeric; v_ids bigint[] := '{}';
-begin
-    select role, coalesce(username,'') into v_role, v_username
-        from public.profiles where id = auth.uid();
-    if v_role is distinct from 'admin' then
-        raise exception 'هذه العملية مقصورة على المدير';
-    end if;
-    if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) = 0 then
-        raise exception 'لا توجد بيانات موظفين صالحة للاستيراد';
-    end if;
-
-    v_note := left(trim(coalesce(p_note,'')), 500);
-    select array_agg(year order by cast(year as integer)) into v_years from public.years;
-    v_current := case when array_length(v_years,1) is null then null
-                      else v_years[array_length(v_years,1)] end;
-
-    for r in select value from jsonb_array_elements(p_rows) loop
-        v_name := trim(coalesce(r->>'name',''));
-        if v_name = '' then v_skipped := v_skipped + 1; continue; end if;
-
-        insert into public.employees
-            (name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, created_at)
-        values (v_name, coalesce(trim(r->>'job_number'),''), coalesce(trim(r->>'national_id'),''),
-                coalesce(trim(r->>'job_title'),''), 0, false, false, now())
-        returning id into v_id;
-
-        if v_years is not null then
-            insert into public.employee_years (employee_id, year, added, deducted)
-            select v_id, y, 30, 0 from unnest(v_years) as y
-            on conflict (employee_id, year) do nothing;
-        end if;
-
-        if nullif(trim(coalesce(r->>'remainingBalance','')),'') is not null and v_current is not null then
-            v_remaining := (r->>'remainingBalance')::numeric;
-            v_consumed  := 30 - v_remaining;  -- availableTotal defaults to 30 for bulk rows
-            if v_consumed > 0 then
-                update public.employee_years set deducted = deducted + v_consumed
-                    where employee_id = v_id and year = v_current;
-                insert into public.deductions (employee_id, year, start_date, end_date, days, note, created_by, created_at)
-                values (v_id, v_current, '', '', v_consumed, v_note, v_username, now());
-                v_reconciled := v_reconciled + 1;
-            end if;
-        end if;
-
-        v_ids := array_append(v_ids, v_id);
-        v_created := v_created + 1;
-    end loop;
-
-    perform setval(pg_get_serial_sequence('public.employees','id'),
-                   (select coalesce(max(id),1) from public.employees),
-                   (select count(*) > 0 from public.employees));
-    perform public.log_action(v_role, v_username, 'استيراد جماعي للموظفين',
-        format('تمت إضافة %s موظف (تخطي %s، تسوية %s)', v_created, v_skipped, v_reconciled));
-
-    return jsonb_build_object(
-        'created', v_created, 'skipped', v_skipped, 'reconciled', v_reconciled,
-        'employees', coalesce(
-            (select jsonb_agg(public.get_employee_json(id) order by id)
-             from public.employees where id = any(v_ids)), '[]'::jsonb)
-    );
-end;
-$$;
-
 -- How many days the employee has earned SO FAR this year — completed
 -- months only, current month never counts until it closes. This is what
 -- prevents the "phantom balance" of a full year's allocation being
@@ -1461,7 +1386,6 @@ grant execute on function public.toggle_employee_freeze(bigint, boolean)        
 grant execute on function public.sync_employees(jsonb)                           to authenticated;
 grant execute on function public.list_employees()                                to authenticated;
 grant execute on function public.export_all()                                    to authenticated;
-grant execute on function public.bulk_add_employees(jsonb, text)                 to authenticated;
 grant execute on function public.add_year(text, numeric)                         to authenticated;
 grant execute on function public.archive_year(text)                              to authenticated;
 grant execute on function public.restore_year(text)                              to authenticated;
@@ -1613,12 +1537,13 @@ create policy "authenticated can read invite_codes"
     to authenticated
     using (true);
 
--- Admin-only writes: generate_invite_code()/consume_invite_code() are
--- SECURITY DEFINER and run as the table owner, so they bypass RLS
--- entirely and are unaffected by this. This policy only stops a
--- non-admin session from writing to the table directly over REST,
--- bypassing those RPCs (e.g. minting its own invite codes or reviving
--- an already-used one).
+-- Admin-only writes: the frontend creates/lists invite codes via direct
+-- REST calls (see generateInviteCode/getInviteCodes in api/client.js),
+-- not an RPC, so THIS policy is what actually guards creation — it stops
+-- a non-admin session from minting its own invite code or reviving an
+-- already-used one. consume_invite_code() (redeeming a code) is
+-- SECURITY DEFINER and runs as the table owner, bypassing RLS entirely,
+-- so it is unaffected by this policy either way.
 create policy "admin can insert invite_codes"
     on public.invite_codes for insert
     to authenticated
@@ -1629,49 +1554,6 @@ create policy "admin can update invite_codes"
     to authenticated
     using (public.current_app_role() = 'admin')
     with check (public.current_app_role() = 'admin');
-
--- Generate a new invite code. Admin only (checked by app role).
-create or replace function public.generate_invite_code(p_role text)
-returns text
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-    v_code text;
-begin
-    if public.current_app_role() != 'admin' then
-        raise exception 'هذه العملية مقصورة على المدير';
-    end if;
-    if p_role not in ('data_entry', 'viewer') then
-        raise exception 'الصلاحية غير صالحة';
-    end if;
-    v_code := 'WQF-' || upper(encode(gen_random_bytes(5), 'hex'));
-    insert into public.invite_codes (code, role, created_by)
-    values (v_code, p_role, auth.uid());
-    return v_code;
-end;
-$$;
-
--- Validate an invite code (returns role if valid, raises otherwise).
-create or replace function public.validate_invite_code(p_code text)
-returns text
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-    v_role text;
-begin
-    select role into v_role
-    from public.invite_codes
-    where code = p_code and is_used = false;
-    if not found then
-        raise exception 'رمز الدعوة غير صالح أو تم استخدامه مسبقاً';
-    end if;
-    return v_role;
-end;
-$$;
 
 -- Verify + consume an invite code AND grant its role to the calling user —
 -- the only place a role above 'viewer' is ever assigned. invite_codes.role
@@ -1704,8 +1586,6 @@ begin
 end;
 $$;
 
-grant execute on function public.generate_invite_code(text)    to authenticated;
-grant execute on function public.validate_invite_code(text)     to authenticated;
 grant execute on function public.consume_invite_code(text)      to authenticated;
 
 -- =====================================================================
