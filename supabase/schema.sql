@@ -228,8 +228,7 @@ as $$
                        'end', d.end_date, 'days', d.days, 'note', d.note,
                        'createdBy', d.created_by, 'createdAt', d.created_at,
                        'deductionSource', d.deduction_source,
-                       'officialHolidays', d.official_holidays,
-                       'splitGroupId', d.split_group_id
+                       'officialHolidays', d.official_holidays
                    ) order by d.id)
             from public.deductions d where d.employee_id = e.id
         ), '[]'::jsonb),
@@ -301,18 +300,11 @@ as $$
 declare
     v_role text; v_username text; emp public.employees%rowtype;
     v_has_dates boolean; v_has_unknown boolean;
-    v_years text[]; v_latest text; v_prev_year text; v_next_year text;
-    v_start_year text; v_end_year text;
+    v_years text[]; v_latest text; v_start_year text;
     v_year text; v_days numeric; v_start text := ''; v_end text := '';
     v_retro int; v_net numeric; v_note text;
     v_monthly_rate numeric; v_dynamic_added numeric;
     v_official_holidays numeric;
-    v_split boolean := false;
-    v_year_a text; v_year_b text;
-    v_dec31 date; v_jan1 date;
-    v_days_a numeric; v_days_b numeric;
-    v_holidays_a numeric; v_holidays_b numeric;
-    v_split_id uuid;
     p_start text := nullif(p_payload->>'start', '');
     p_end   text := nullif(p_payload->>'end', '');
     p_holidays numeric := coalesce((p_payload->>'customHolidays')::numeric, 0);
@@ -323,8 +315,6 @@ begin
         from public.profiles where id = auth.uid();
     if v_role is null then raise exception 'الحساب غير مُهيأ'; end if;
 
-    -- Pessimistic row lock: prevents two concurrent deductions from both
-    -- passing the insufficient-balance check before either one commits.
     select * into emp from public.employees where id = p_employee_id for update;
     if not found then raise exception 'الموظف غير موجود'; end if;
     v_note := nullif(left(trim(coalesce(p_payload->>'note','')), 500), '');
@@ -333,34 +323,16 @@ begin
         from public.years where coalesce(is_archived, false) = false;
     if v_years is null then raise exception 'لا توجد سنة مالية نشطة لتسجيل الخصم'; end if;
     v_latest := v_years[array_length(v_years, 1)];
-    v_prev_year := (cast(v_latest as integer) - 1)::text;
-    v_next_year := (cast(v_latest as integer) + 1)::text;
 
     v_has_dates   := (p_start is not null and p_end is not null);
     v_has_unknown := (p_unknown is not null);
 
     if v_has_dates then
         v_start_year := split_part(p_start, '-', 1);
-        v_end_year   := split_part(p_end, '-', 1);
-
-        if v_start_year = v_latest and v_end_year = v_latest then
-            v_year := v_latest;
-        elsif v_start_year = v_latest and v_end_year = v_next_year then
-            v_split := true; v_year_a := v_latest; v_year_b := v_next_year;
-        elsif v_start_year = v_prev_year and v_end_year = v_prev_year then
-            if not exists (select 1 from public.years where year = v_prev_year) then
-                raise exception 'لا يمكن تسجيل الإجازة: السنة % غير موجودة في النظام', v_prev_year;
-            end if;
-            v_year := v_prev_year;
-        elsif v_start_year = v_prev_year and v_end_year = v_latest then
-            if not exists (select 1 from public.years where year = v_prev_year) then
-                raise exception 'لا يمكن تسجيل الإجازة: السنة % غير موجودة في النظام', v_prev_year;
-            end if;
-            v_split := true; v_year_a := v_prev_year; v_year_b := v_latest;
-        else
-            raise exception 'لا يمكن تسجيل الإجازة: تاريخ الإجازة يقع خارج السنة المالية النشطة حالياً أو خارج نطاق التصحيح الرجعي المسموح. يرجى إغلاق السنة الحالية أو تفعيل السنة المناسبة.';
+        if v_start_year is distinct from v_latest then
+            raise exception 'لا يمكن تسجيل الإجازة: تاريخ الإجازة يقع خارج السنة المالية النشطة حالياً. يرجى إغلاق السنة الحالية أو تفعيل السنة المناسبة.';
         end if;
-
+        v_year := v_start_year;
         if p_holidays < 0 then
             raise exception 'لا يمكن أن يكون عدد العطلات الرسمية سالباً';
         end if;
@@ -372,58 +344,20 @@ begin
         if v_days > 366 then
             raise exception 'لا يمكن تسجيل خصم يتجاوز 366 يوماً في عملية واحدة';
         end if;
-        -- "Today" must be Libya's calendar date, not the database server's.
-        -- Supabase runs on UTC, so between 00:00 and 02:00 Libya time
-        -- `current_date` is still yesterday — silently widening the 40-day
-        -- window to 41 during those hours and disagreeing with the
-        -- frontend's Africa/Tripoli check.
         v_retro := ((now() at time zone 'Africa/Tripoli')::date - p_start::date);
         if v_retro > 40 then
             raise exception 'لا يمكن تسجيل إجازة بتاريخ رجعي يتجاوز 40 يوماً من تاريخ النظام الحالي.';
         end if;
         v_start := p_start; v_end := p_end;
 
-        if v_split then
-            v_dec31 := (v_year_a || '-12-31')::date;
-            v_jan1  := (v_year_b || '-01-01')::date;
-
-            -- Raw (pre-holiday) leg totals always sum to the full range's raw
-            -- total, since Dec 31 / Jan 1 are adjacent calendar days with no
-            -- gap or overlap; holidays are then consumed from the first leg
-            -- before spilling into the second — a deterministic, if
-            -- arbitrary, split (this is a rare edge case).
-            declare
-                v_leg_a_raw numeric := public.calculate_deduction_days(p_start::date, v_dec31, 0);
-                v_leg_b_raw numeric := public.calculate_deduction_days(v_jan1, p_end::date, 0);
-            begin
-                v_holidays_a := least(p_holidays, v_leg_a_raw);
-                v_holidays_b := greatest(0, p_holidays - v_holidays_a);
-                v_days_a := greatest(0, v_leg_a_raw - v_holidays_a);
-                v_days_b := greatest(0, v_leg_b_raw - v_holidays_b);
-            end;
-
-            if exists (select 1 from public.deductions
-                        where employee_id = emp.id and year = v_year_a
-                        and start_date <> '' and end_date <> ''
-                        and start_date::date <= v_dec31 and end_date::date >= v_start::date) then
-                raise exception 'يوجد تداخل زمني مع إجازة أخرى مسجلة مسبقاً لهذا الموظف. الأيام محجوزة.';
-            end if;
-            if exists (select 1 from public.deductions
-                        where employee_id = emp.id and year = v_year_b
-                        and start_date <> '' and end_date <> ''
-                        and start_date::date <= v_end::date and end_date::date >= v_jan1) then
-                raise exception 'يوجد تداخل زمني مع إجازة أخرى مسجلة مسبقاً لهذا الموظف. الأيام محجوزة.';
-            end if;
-        else
-            if exists (select 1 from public.deductions
-                        where employee_id = emp.id
-                        and year = v_year
-                        and start_date <> ''
-                        and end_date <> ''
-                        and start_date::date <= v_end::date
-                        and end_date::date >= v_start::date) then
-                raise exception 'يوجد تداخل زمني مع إجازة أخرى مسجلة مسبقاً لهذا الموظف. الأيام محجوزة.';
-            end if;
+        if exists (select 1 from public.deductions
+                    where employee_id = emp.id
+                    and year = v_year
+                    and start_date <> ''
+                    and end_date <> ''
+                    and start_date::date <= v_end::date
+                    and end_date::date >= v_start::date) then
+            raise exception 'يوجد تداخل زمني مع إجازة أخرى مسجلة مسبقاً لهذا الموظف. الأيام محجوزة.';
         end if;
     elsif v_has_unknown then
         v_days := p_unknown::numeric;
@@ -439,9 +373,6 @@ begin
         raise exception 'يرجى تحديد تاريخ البداية والنهاية أو عدد أيام الخصم';
     end if;
 
-    -- Dynamic accrual: what the employee has actually earned so far this
-    -- (active) year — used for the balance check regardless of which
-    -- year(s) the deduction itself will land in.
     v_monthly_rate := case when emp.over_45 then 3.75 else 2.5 end;
     v_dynamic_added := public.calculate_dynamic_accrual(v_monthly_rate, emp.hire_date_current_year);
 
@@ -458,88 +389,30 @@ begin
         end if;
     end if;
 
-    if v_split then
-        v_split_id := gen_random_uuid();
+    insert into public.employee_years (employee_id, year, added, deducted)
+    values (emp.id, v_year, v_dynamic_added, 0)
+    on conflict (employee_id, year) do update set added = v_dynamic_added;
 
-        if v_year_a = v_latest then
-            insert into public.employee_years (employee_id, year, added, deducted)
-            values (emp.id, v_year_a, v_dynamic_added, 0)
-            on conflict (employee_id, year) do update set added = v_dynamic_added;
-        else
-            -- Archived prior year or not-yet-opened next year: never touch
-            -- `added`, only `deducted`.
-            insert into public.employee_years (employee_id, year, added, deducted)
-            values (emp.id, v_year_a, 0, 0)
-            on conflict (employee_id, year) do nothing;
+    update public.employee_years set deducted = deducted + v_days
+        where employee_id = emp.id and year = v_year;
+
+    if not emp.is_unpaid_leave then
+        if coalesce((select coalesce(emp.initial_carried_forward, 0)
+                      + sum(coalesce(added, 0) - coalesce(deducted, 0))
+                      - coalesce((select coalesce(added, 0) from public.employee_years
+                                   where employee_id = emp.id and year = v_latest), 0)
+                      + v_dynamic_added
+                 from public.employee_years where employee_id = emp.id), 0) < 0 then
+            raise exception 'خطأ داخلي: الرصيد سالب بعد الخصم - تم إلغاء العملية';
         end if;
-        update public.employee_years set deducted = deducted + v_days_a
-            where employee_id = emp.id and year = v_year_a;
-
-        if v_year_b = v_latest then
-            insert into public.employee_years (employee_id, year, added, deducted)
-            values (emp.id, v_year_b, v_dynamic_added, 0)
-            on conflict (employee_id, year) do update set added = v_dynamic_added;
-        else
-            insert into public.employee_years (employee_id, year, added, deducted)
-            values (emp.id, v_year_b, 0, 0)
-            on conflict (employee_id, year) do nothing;
-        end if;
-        update public.employee_years set deducted = deducted + v_days_b
-            where employee_id = emp.id and year = v_year_b;
-
-        if not emp.is_unpaid_leave then
-            if coalesce((select coalesce(emp.initial_carried_forward, 0)
-                          + sum(coalesce(added, 0) - coalesce(deducted, 0))
-                          - coalesce((select coalesce(added, 0) from public.employee_years
-                                       where employee_id = emp.id and year = v_latest), 0)
-                          + v_dynamic_added
-                     from public.employee_years where employee_id = emp.id), 0) < 0 then
-                raise exception 'خطأ داخلي: الرصيد سالب بعد الخصم - تم إلغاء العملية';
-            end if;
-        end if;
-
-        insert into public.deductions
-            (employee_id, year, start_date, end_date, days, note, created_by, created_at, split_group_id, official_holidays)
-        values
-            (emp.id, v_year_a, v_start, v_dec31::text, v_days_a, v_note, v_username, now(), v_split_id, v_holidays_a),
-            (emp.id, v_year_b, v_jan1::text, v_end, v_days_b, v_note, v_username, now(), v_split_id, v_holidays_b);
-
-        perform public.log_action(v_role, v_username, 'تسجيل خصم إجازة (منشطر بين سنتين)',
-            format('تم خصم %s يوم من رصيد %s — %s يوم لسنة %s و%s يوم لسنة %s',
-                   v_days, emp.name, v_days_a, v_year_a, v_days_b, v_year_b));
-    else
-        if v_year = v_latest then
-            insert into public.employee_years (employee_id, year, added, deducted)
-            values (emp.id, v_year, v_dynamic_added, 0)
-            on conflict (employee_id, year) do update set added = v_dynamic_added;
-        else
-            -- Backdated into an archived year: that year's total was already
-            -- finalized by add_year() when it closed — never overwrite it.
-            insert into public.employee_years (employee_id, year, added, deducted)
-            values (emp.id, v_year, 0, 0)
-            on conflict (employee_id, year) do nothing;
-        end if;
-        update public.employee_years set deducted = deducted + v_days
-            where employee_id = emp.id and year = v_year;
-
-        if not emp.is_unpaid_leave then
-            if coalesce((select coalesce(emp.initial_carried_forward, 0)
-                          + sum(coalesce(added, 0) - coalesce(deducted, 0))
-                          - coalesce((select coalesce(added, 0) from public.employee_years
-                                       where employee_id = emp.id and year = v_latest), 0)
-                          + v_dynamic_added
-                     from public.employee_years where employee_id = emp.id), 0) < 0 then
-                raise exception 'خطأ داخلي: الرصيد سالب بعد الخصم - تم إلغاء العملية';
-            end if;
-        end if;
-
-        insert into public.deductions (employee_id, year, start_date, end_date, days, note, created_by, created_at, official_holidays)
-        values (emp.id, v_year, v_start, v_end, v_days, v_note, v_username, now(), v_official_holidays);
-
-        perform public.log_action(v_role, v_username, 'تسجيل خصم إجازة',
-            format('تم خصم %s يوم من رصيد %s لسنة %s%s', v_days, emp.name, v_year,
-                   case when v_has_dates then '' else ' (بدون تاريخ محدد)' end));
     end if;
+
+    insert into public.deductions (employee_id, year, start_date, end_date, days, note, created_by, created_at, official_holidays)
+    values (emp.id, v_year, v_start, v_end, v_days, v_note, v_username, now(), v_official_holidays);
+
+    perform public.log_action(v_role, v_username, 'تسجيل خصم إجازة',
+        format('تم خصم %s يوم من رصيد %s لسنة %s%s', v_days, emp.name, v_year,
+               case when v_has_dates then '' else ' (بدون تاريخ محدد)' end));
 
     return jsonb_build_object('employee', public.get_employee_json(emp.id));
 end;
@@ -556,7 +429,6 @@ security definer
 set search_path = public
 as $$
 declare v_role text; v_username text; d public.deductions%rowtype;
-    v_total numeric := 0; sib record;
 begin
     select role, coalesce(username,'') into v_role, v_username
         from public.profiles where id = auth.uid();
@@ -566,22 +438,12 @@ begin
     select * into d from public.deductions where id = p_deduction_id for update;
     if not found then raise exception 'سجل الخصم غير موجود'; end if;
 
-    if d.split_group_id is not null then
-        for sib in select * from public.deductions where split_group_id = d.split_group_id for update loop
-            update public.employee_years set deducted = greatest(0, deducted - sib.days)
-                where employee_id = sib.employee_id and year = sib.year;
-            v_total := v_total + sib.days;
-        end loop;
-        delete from public.deductions where split_group_id = d.split_group_id;
-    else
-        update public.employee_years set deducted = greatest(0, deducted - d.days)
-            where employee_id = d.employee_id and year = d.year;
-        delete from public.deductions where id = d.id;
-        v_total := d.days;
-    end if;
+    update public.employee_years set deducted = greatest(0, deducted - d.days)
+        where employee_id = d.employee_id and year = d.year;
+    delete from public.deductions where id = d.id;
 
     perform public.log_action(v_role, v_username, 'حذف خصم إجازة',
-        format('تم حذف خصم %s يوم', v_total));
+        format('تم حذف خصم %s يوم', d.days));
     return jsonb_build_object('employee', public.get_employee_json(d.employee_id));
 end;
 $$;
@@ -1080,9 +942,6 @@ declare v_role text; v_username text; v_year text; v_default numeric;
     emp record;
     v_running numeric;
     v_was_archived boolean;
-    v_closing_year text;
-    v_monthly_rate numeric;
-    v_final_added numeric;
 begin
     select role, coalesce(username,'') into v_role, v_username
         from public.profiles where id = auth.uid();
@@ -1096,43 +955,16 @@ begin
     v_was_archived := exists (select 1 from public.years where year = v_year and is_archived = true);
     v_default := coalesce(p_default_days, 30);
 
-    -- Finalize every still-open PRIOR year's accrual to its true full-year
-    -- total before it becomes historical — must run before the ceiling
-    -- loop below. See migration header for why this is needed.
-    for emp in
-        select e.id, e.over_45, e.hire_date_current_year, e.is_unpaid_leave
-        from public.employees e where e.is_archived = false
-    loop
-        v_monthly_rate := case when emp.over_45 then 3.75 else 2.5 end;
-        for v_closing_year in
-            select y.year from public.years y
-            where y.is_archived = false and cast(y.year as integer) < cast(v_year as integer)
-        loop
-            v_final_added := case when emp.is_unpaid_leave then 0
-                else public.calculate_year_final_accrual(v_monthly_rate, emp.hire_date_current_year, v_closing_year)
-            end;
-            update public.employee_years
-                set added = v_final_added
-                where employee_id = emp.id and year = v_closing_year;
-        end loop;
-    end loop;
-
     if v_was_archived then
         update public.years set is_archived = false where year = v_year;
     else
         insert into public.years (year) values (v_year);
     end if;
 
-    -- A placeholder row (added = 0) may already exist here if a forward
-    -- cross-year split created it before this year was ever officially
-    -- opened — backfill its real allocation. A row that already has one
-    -- (added > 0) is left untouched.
     insert into public.employee_years (employee_id, year, added, deducted)
     select id, v_year, case when over_45 then 45 else v_default end, 0
         from public.employees where is_archived = false
-    on conflict (employee_id, year) do update
-        set added = excluded.added
-        where public.employee_years.added = 0;
+    on conflict (employee_id, year) do nothing;
 
     for emp in select e.id, e.initial_carried_forward from public.employees e where e.is_archived = false loop
         select coalesce(emp.initial_carried_forward, 0)
@@ -1145,7 +977,7 @@ begin
         where id = emp.id;
     end loop;
 
-    perform public.log_action(v_role, v_username, 'إضافة سنة مالية', format('السنة: %s', v_year));
+    perform public.log_action(v_role, v_username, 'فتح سنة مالية', format('السنة: %s', v_year));
     return jsonb_build_object('years',
         coalesce((select jsonb_agg(year order by cast(year as integer))
                   from public.years where is_archived = false), '[]'::jsonb));
