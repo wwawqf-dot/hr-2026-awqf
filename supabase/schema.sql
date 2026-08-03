@@ -1302,9 +1302,11 @@ create table if not exists public.activity_logs (
 
 alter table public.activity_logs enable row level security;
 
+drop policy if exists "authenticated can insert activity_logs" on public.activity_logs;
 create policy "authenticated can insert activity_logs"
     on public.activity_logs for insert to authenticated with check (true);
 
+drop policy if exists "admins can select activity_logs" on public.activity_logs;
 create policy "admins can select activity_logs"
     on public.activity_logs for select to authenticated
     using (
@@ -1329,6 +1331,7 @@ alter table public.invite_codes enable row level security;
 
 -- Anyone authenticated can READ unused codes (needed during registration).
 -- But the frontend uses SECURITY DEFINER RPCs, so this is a mere safety net.
+drop policy if exists "authenticated can read invite_codes" on public.invite_codes;
 create policy "authenticated can read invite_codes"
     on public.invite_codes for select
     to authenticated
@@ -1340,11 +1343,13 @@ create policy "authenticated can read invite_codes"
 -- non-admin session from writing to the table directly over REST,
 -- bypassing those RPCs (e.g. minting its own invite codes or reviving
 -- an already-used one).
+drop policy if exists "admin can insert invite_codes" on public.invite_codes;
 create policy "admin can insert invite_codes"
     on public.invite_codes for insert
     to authenticated
     with check (public.current_app_role() = 'admin');
 
+drop policy if exists "admin can update invite_codes" on public.invite_codes;
 create policy "admin can update invite_codes"
     on public.invite_codes for update
     to authenticated
