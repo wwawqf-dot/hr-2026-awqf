@@ -110,6 +110,20 @@ export function useLeaveData(enabled = true) {
         return data.years;
     }
 
+    async function finalizeYear(year) {
+        const data = await api.finalizeYear(year);
+        await refresh();
+        return data;
+    }
+
+    async function listYearArchives() {
+        return api.listYearArchives();
+    }
+
+    async function getYearArchive(year) {
+        return api.getYearArchive(year);
+    }
+
     async function updateSettings(payload) {
         const data = await api.updateSettings(payload);
         setSettings(data.settings);
@@ -160,6 +174,9 @@ export function useLeaveData(enabled = true) {
         deleteYear,
         getArchivedYears,
         restoreYear,
+        finalizeYear,
+        listYearArchives,
+        getYearArchive,
         updateSettings,
         addDeduction,
         deleteDeduction,

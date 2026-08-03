@@ -186,6 +186,11 @@ export const api = {
     restoreYear: (year) => rpc('restore_year', { p_year: String(year) }),
     getArchivedYears: () => rpc('list_archived_years'),
 
+    // ---- Year archives (each financial year frozen separately) ---------
+    finalizeYear: (year) => rpc('finalize_year', { p_year: String(year) }),
+    listYearArchives: () => rpc('list_year_archives'),
+    getYearArchive: (year) => rpc('get_year_archive', { p_year: String(year) }),
+
     // ---- Deductions ---------------------------------------------------
     getExpiringLeaves: () => listExpiringLeaves(),
     addDeduction: (employeeId, payload) =>

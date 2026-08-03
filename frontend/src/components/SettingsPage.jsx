@@ -51,6 +51,7 @@ export default function SettingsPage({ leaveData }) {
         years, settings, loading, error, addYear, deleteYear, updateSettings,
         exportBackup, importBackup, deleteAllRecords,
         getArchivedEmployees, restoreEmployee, getArchivedYears, restoreYear,
+        finalizeYear, listYearArchives, getYearArchive,
     } = leaveData;
 
     const [newYear, setNewYear] = useState('');
@@ -185,6 +186,71 @@ export default function SettingsPage({ leaveData }) {
         }
     }
 
+    // Isolated yearly archive: freezes the year's full data (employees +
+    // that year's balances + that year's deduction register) into its own
+    // separate sealed snapshot. The live tables are never touched.
+    const [freezingKey, setFreezingKey] = useState(null);
+    const [archives, setArchives] = useState([]);
+    const [archivesLoading, setArchivesLoading] = useState(false);
+    const [archivesOpen, setArchivesOpen] = useState(false);
+    const [archivesError, setArchivesError] = useState('');
+    const [archivesLoaded, setArchivesLoaded] = useState(false);
+
+    async function loadArchives() {
+        setArchivesLoading(true);
+        setArchivesError('');
+        try {
+            setArchives(await listYearArchives());
+            setArchivesLoaded(true);
+        } catch (err) {
+            setArchivesError(err.message || 'تعذر تحميل أرشيف السنوات');
+        } finally {
+            setArchivesLoading(false);
+        }
+    }
+
+    function toggleArchives() {
+        const next = !archivesOpen;
+        setArchivesOpen(next);
+        if (next && !archivesLoaded) loadArchives();
+    }
+
+    async function handleFinalizeYear(year) {
+        if (
+            !window.confirm(
+                `سيتم حفظ سنة ${year} كاملة في أرشيف منفصل (لقطة مجمّدة: الموظفون + أرصدة السنة + سجل خصوماتها).\nالبيانات الحية لا تتغير نهائياً وتبقى السنة ظاهرة هنا كما هي.\nهل تريد المتابعة؟`
+            )
+        )
+            return;
+        setFreezingKey(`year-${year}`);
+        setArchivesError('');
+        try {
+            await finalizeYear(year);
+            logActivity('أرشفة سنة مالية منفصلة', `تم حفظ الأرشيف المنفصل للسنة ${year}`).catch(() => {});
+            await loadArchives();
+        } catch (err) {
+            setArchivesError(err.message || 'تعذر أرشفة السنة');
+        } finally {
+            setFreezingKey(null);
+        }
+    }
+
+    async function handleExportYearArchive(year) {
+        setArchivesError('');
+        try {
+            const snapshot = await getYearArchive(year);
+            const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `أرشيف_سنة_${year}_${getLibyaDateStr()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            setArchivesError(err.message || 'تعذر تصدير أرشيف السنة');
+        }
+    }
+
     async function handleExport() {
         setBackupError('');
         setBackupSuccess('');
@@ -307,6 +373,16 @@ export default function SettingsPage({ leaveData }) {
                                     <tr key={year}>
                                         <td style={{ fontWeight: 700, color: 'var(--emerald)' }}>سنة {year}</td>
                                         <td style={{ textAlign: 'center' }}>
+                                            <button
+                                                className="btn btn-icon-text btn-outline"
+                                                onClick={() => handleFinalizeYear(year)}
+                                                title="أرشفة هذه السنة في مكان منفصل (لقطة كاملة)"
+                                                disabled={freezingKey === `year-${year}`}
+                                                style={{ marginLeft: 8 }}
+                                            >
+                                                {freezingKey === `year-${year}` && <LoadingSpinner size={14} color="#10b981" style={{ marginLeft: 6 }} />}
+                                                <i className="fas fa-box-archive"></i> أرشفة منفصلة
+                                            </button>
                                             <button
                                                 className="btn btn-icon btn-danger-outline"
                                                 onClick={() => handleDeleteYear(year)}
@@ -457,6 +533,68 @@ export default function SettingsPage({ leaveData }) {
                                     </div>
                                 )}
                             </>
+                        )}
+                    </>
+                )}
+            </div>
+
+            <div className="panel">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', marginBottom: archivesOpen ? '1.25rem' : 0 }}>
+                    <h2 style={{ margin: 0 }}><i className="fas fa-box-archive"></i> الأرشيف المنفصل لكل سنة</h2>
+                    <button type="button" className="btn btn-outline" onClick={toggleArchives}>
+                        <i className={`fas fa-chevron-${archivesOpen ? 'up' : 'down'}`}></i> {archivesOpen ? 'إخفاء' : 'عرض'}
+                    </button>
+                </div>
+
+                {archivesOpen && (
+                    <>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                            عند الانتقال إلى سنة مالية جديدة، تُحفظ السنة السابقة تلقائياً في أرشيف منفصل خاص بها
+                            (لقطة مجمّدة: الموظفون + أرصدة السنة + سجل الخصومات). كل سنة معزولة تماماً عن الأخرى،
+                            وسجل الخصومات ينتقل معه للاستمرارية دون تغيير البيانات الحية.
+                        </p>
+
+                        {archivesError && <div className="form-error">{archivesError}</div>}
+
+                        {archivesLoading ? (
+                            <div className="empty-state">جاري تحميل الأرشيف المنفصل...</div>
+                        ) : (
+                            archives.length === 0 ? (
+                                <div className="empty-state">لا توجد سنوات محفوظة في الأرشيف المنفصل بعد. أرشفة أي سنة تظهر في "إدارة السنوات المالية" أعلاه بزر "أرشفة منفصلة".</div>
+                            ) : (
+                                <div className="table-container" style={{ maxHeight: 'none' }}>
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>السنة</th>
+                                                <th>تاريخ الأرشفة</th>
+                                                <th>عدد الموظفين</th>
+                                                <th style={{ textAlign: 'center' }}>الإجراءات</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {archives.map((a) => (
+                                                <tr key={a.year}>
+                                                    <td style={{ fontWeight: 700, color: 'var(--emerald)' }}>سنة {a.year}</td>
+                                                    <td style={{ color: 'var(--text-muted)' }}>
+                                                        {new Date(a.frozenAt).toLocaleString('ar-LY')}
+                                                    </td>
+                                                    <td>{a.employeesCount}</td>
+                                                    <td style={{ textAlign: 'center' }}>
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-icon-text btn-outline"
+                                                            onClick={() => handleExportYearArchive(a.year)}
+                                                        >
+                                                            <i className="fas fa-file-export"></i> تصدير JSON
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )
                         )}
                     </>
                 )}
