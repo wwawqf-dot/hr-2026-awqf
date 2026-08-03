@@ -29,8 +29,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          supabase db push \
-            --project-ref uzmhsesmszngkanjsjgy
+          supabase link --project-ref uzmhsesmszngkanjsjgy
+          supabase db push
 
   build:
     needs: []
