@@ -1439,6 +1439,105 @@ grant execute on function public.generate_invite_code(text)    to authenticated;
 grant execute on function public.validate_invite_code(text)     to authenticated;
 grant execute on function public.consume_invite_code(text)      to authenticated;
 
--- =====================================================================
---  DONE. Next: create your first admin (see MIGRATION.md, step 3).
--- =====================================================================
+-- ---------------------------------------------------------------------
+-- 8. IN-APP USER ACCOUNTS (admin-only) + LOGIN BY USERNAME
+-- ---------------------------------------------------------------------
+-- accounts are created inside the app with NAME + PASSWORD only.
+-- Supabase Auth still requires an email, so one is generated internally
+-- (wqf-<random>@internal.local) and never surfaced. Login resolves the
+-- typed username back to that internal email.
+--
+-- Security: create_user() is SECURITY DEFINER and re-checks
+-- current_app_role() = 'admin' server-side, so no client that lacks an
+-- admin session can mint accounts or grant data_entry/viewer.
+
+-- The pre-existing check constraint only allowed admin/data_entry.
+-- The app also assigns 'viewer' (default from handle_new_user and the
+-- only role invite flows mint), so include it.
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check
+    check (role in ('admin', 'data_entry', 'viewer'));
+
+-- Resolve a login identifier to the auth email: returns anything that
+-- already contains '@' verbatim; otherwise treats it as a username and
+-- looks it up in profiles.email.
+create or replace function public.resolve_login(p_identifier text)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select case
+        when p_identifier like '%@%' then p_identifier
+        else (select email from public.profiles where username = trim(p_identifier) limit 1)
+    end;
+$$;
+
+-- Create an auth account (internal email + username + password + role).
+-- Only an existing admin may call it. On success the handle_new_user
+-- trigger provisions the avatar/profile row; we then set the chosen role.
+create or replace function public.create_user(
+    p_email    text,      -- generated email, kept out of the UI
+    p_password text,
+    p_username text,
+    p_role     text default 'viewer'
+)
+returns json
+language plpgsql
+security definer
+set search_path = public, pg_catalog, pg_temp, extensions
+as $$
+declare
+    v_user_id  uuid;
+    v_enc_pw   text;
+    v_email    text;
+    v_username text;
+begin
+    if public.current_app_role() != 'admin' then
+        raise exception 'هذه العملية مقصورة على المدير';
+    end if;
+    if p_role not in ('data_entry', 'viewer') then
+        raise exception 'الصلاحية غير صالحة';
+    end if;
+    v_username := trim(coalesce(p_username, ''));
+    if v_username = '' then
+        raise exception 'يرجى إدخال اسم المستخدم';
+    end if;
+    if char_length(coalesce(p_password, '')) < 6 then
+        raise exception 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
+    end if;
+    if exists (select 1 from public.profiles where username = v_username) then
+        raise exception 'هذا الاسم مسجل مسبقاً للمستخدمين';
+    end if;
+
+    -- Generate an internal-only email. The username columns of profiles
+    -- are what the app actually shows; the email is never surfaced.
+    v_email    := 'wqf-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12) || '@internal.local';
+    v_user_id  := gen_random_uuid();
+    v_enc_pw   := extensions.crypt(p_password, extensions.gen_salt('bf'));
+
+    insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
+                            email_confirmed_at, created_at, updated_at,
+                            confirmation_token, recovery_token,
+                            email_change_token_new, email_change, raw_app_meta_data,
+                            raw_user_meta_data, is_super_admin)
+    values ('00000000-0000-0000-0000-000000000000', v_user_id, 'authenticated', 'authenticated',
+            v_email, v_enc_pw, now(), now(), now(),
+            '', '', '', '', '{"provider":"email","providers":["email"]}',
+            jsonb_build_object('username', v_username, 'role', p_role), false);
+
+    insert into auth.identities (provider_id, user_id, identity_data, provider, last_sign_in_at,
+                                 created_at, updated_at, id)
+    values (v_email, v_user_id,
+            jsonb_build_object('sub', v_user_id::text, 'email', v_email),
+            'email', now(), now(), now(), v_user_id);
+
+    update public.profiles set role = p_role where id = v_user_id;
+
+    return json_build_object('id', v_user_id, 'email', v_email, 'username', v_username);
+end;
+$$;
+
+grant execute on function public.resolve_login(text)                to anon, authenticated;
+grant execute on function public.create_user(text, text, text, text) to authenticated;
