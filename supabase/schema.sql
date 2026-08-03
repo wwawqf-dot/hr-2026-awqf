@@ -128,7 +128,10 @@ begin
     values (
         new.id,
         coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
-        coalesce(new.raw_user_meta_data->>'role', 'viewer'),
+        'viewer', -- never trust a client-supplied role; the only way to get
+                  -- data_entry/viewer is consume_invite_code() (server-side),
+                  -- and admins are only minted by an existing admin via
+                  -- update_user_role().
         new.email
     )
     on conflict (id) do nothing;
@@ -1399,19 +1402,36 @@ begin
 end;
 $$;
 
--- Mark an invite code as consumed.
+-- Consume an invite code and grant the caller the code's role. This is the
+-- ONLY place a role above 'viewer' is granted on sign-up; invite_codes.role
+-- is constrained to ('data_entry','viewer'), so it can never mint an admin.
 create or replace function public.consume_invite_code(p_code text)
-returns void
+returns text
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+    v_role text;
 begin
-    update public.invite_codes set is_used = true
-    where code = p_code and is_used = false;
-    if not found then
-        raise exception 'رمز الدعوة غير صالح أو تم استخدامه مسبقاً';
+    if auth.uid() is null then
+        raise exception 'غير مصرح';
     end if;
+
+    -- Lock the row so two concurrent redemptions of the same code can't
+    -- both succeed.
+    select role into v_role from public.invite_codes
+        where code = p_code and is_used = false
+        for update;
+    if not found then
+        raise exception 'رمز الدعوة غير صالح أو سبق استخدامه';
+    end if;
+
+    update public.invite_codes set is_used = true where code = p_code;
+
+    update public.profiles set role = v_role where id = auth.uid();
+
+    return v_role;
 end;
 $$;
 
