@@ -12,7 +12,7 @@ export default function Login() {
         e.preventDefault();
         setError('');
         if (!username.trim() || !password) {
-            setError('يرجى إدخال البريد الإلكتروني وكلمة المرور');
+            setError('يرجى إدخال اسم المستخدم وكلمة المرور');
             return;
         }
         setSubmitting(true);
@@ -38,12 +38,12 @@ export default function Login() {
 
                 <form onSubmit={handleSubmit}>
                     <div className="form-group">
-                        <label>البريد الإلكتروني</label>
+                        <label>اسم المستخدم</label>
                         <input
-                            type="email"
+                            type="text"
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
-                            placeholder="أدخل البريد الإلكتروني"
+                            placeholder="أدخل اسم المستخدم"
                             autoComplete="username"
                             autoFocus
                         />

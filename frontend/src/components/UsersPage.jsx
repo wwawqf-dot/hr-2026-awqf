@@ -45,6 +45,12 @@ export default function UsersPage() {
     const [deleteBusy, setDeleteBusy] = useState(false);
     const [showUuid, setShowUuid] = useState(false);
 
+    // Add-user form state (name + password + role — no email needed)
+    const [newName, setNewName] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [newRole, setNewRole] = useState('viewer');
+    const [adding, setAdding] = useState(false);
+
     async function loadUsers() {
         setLoading(true);
         setError('');
@@ -67,6 +73,33 @@ export default function UsersPage() {
     function handleDeleteUser(user) {
         if (isSuperAdmin(user)) return;
         setConfirmUser(user);
+    }
+
+    async function handleAddUser(e) {
+        e.preventDefault();
+        setToast(null);
+        setError('');
+        if (!newName.trim() || !newPassword) {
+            setToast({ type: 'error', message: 'يرجى إدخال اسم المستخدم وكلمة المرور' });
+            return;
+        }
+        if (newPassword.length < 6) {
+            setToast({ type: 'error', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
+            return;
+        }
+        setAdding(true);
+        try {
+            await api.createUser({ username: newName.trim(), password: newPassword, role: newRole });
+            setToast({ type: 'success', message: `تم إنشاء المستخدم "${newName.trim()}" بنجاح` });
+            setNewName('');
+            setNewPassword('');
+            setNewRole('viewer');
+            await loadUsers();
+        } catch (err) {
+            setToast({ type: 'error', message: err.message || 'تعذر إنشاء المستخدم' });
+        } finally {
+            setAdding(false);
+        }
     }
 
     async function confirmDeleteUser() {
@@ -104,62 +137,67 @@ export default function UsersPage() {
             <PageHeader />
             {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
 
-            {/* Supabase Dashboard Link */}
-            <div className="panel" style={{
-                maxWidth: 720, margin: '0 auto 24px', padding: '1.8rem 2.2rem', borderRadius: 16,
-            }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
+            {/* Add-User Form (in-app, no Supabase needed) */}
+            <div className="panel" style={{ maxWidth: 720, margin: '0 auto 24px', padding: '1.8rem 2.2rem', borderRadius: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 22 }}>
                     <div style={{
                         width: 48, height: 48, borderRadius: 14, flexShrink: 0,
-                        background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.2)',
+                        background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.2)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                        <i className="fas fa-database" style={{ color: '#60a5fa', fontSize: 20 }}></i>
+                        <i className="fas fa-user-plus" style={{ color: '#34d399', fontSize: 20 }}></i>
                     </div>
                     <div style={{ flex: 1 }}>
-                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>إضافة مستخدم جديد إلى النظام</h3>
+                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>إضافة مستخدم جديد</h3>
                         <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                            يتم إنشاء المستخدمين عبر لوحة Supabase Dashboard. بعد الإنشاء، يمكنك تعديل صلاحية المستخدم من الجدول أدناه.
+                            أدخل اسم المستخدم وكلمة المرور فقط — لا حاجة للبريد الإلكتروني أو لوحة Supabase.
                         </p>
                     </div>
-                    <a href="https://supabase.com/dashboard/project/uzmhsesmszngkanjsjgy/auth/users" target="_blank" rel="noopener noreferrer"
-                        className="btn btn-primary" style={{
-                            minHeight: 44, whiteSpace: 'nowrap', justifyContent: 'center', borderRadius: 10, flexShrink: 0,
-                            background: 'linear-gradient(135deg, #3b82f6, #2563eb)', fontSize: '0.88rem',
-                        }}>
-                        <i className="fas fa-external-link-alt"></i> فتح Supabase
-                    </a>
                 </div>
 
-                <div style={{
-                    background: 'rgba(59,130,246,0.04)', border: '1px solid rgba(59,130,246,0.1)',
-                    borderRadius: 12, padding: '1.2rem 1.5rem',
+                <form onSubmit={handleAddUser} style={{
+                    display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr auto', gap: 12, alignItems: 'end',
                 }}>
-                    <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#93c5fd' }}>
-                        <i className="fas fa-list-ol" style={{ marginLeft: 8 }}></i>
-                        خطوات إضافة مستخدم جديد:
-                    </h4>
-                    <ol style={{
-                        margin: '0.8rem 1.5rem 0 0', padding: 0,
-                        fontSize: '0.82rem', lineHeight: 2.2, color: 'var(--text-muted)',
+                    <div className="form-group" style={{ margin: 0 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: '0.85rem' }}>
+                            <i className="fas fa-user" style={{ color: 'var(--text-muted)', fontSize: 12 }}></i>
+                            اسم المستخدم
+                        </label>
+                        <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="مثال: أحمد المبروك" />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: '0.85rem' }}>
+                            <i className="fas fa-lock" style={{ color: 'var(--text-muted)', fontSize: 12 }}></i>
+                            كلمة المرور
+                        </label>
+                        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="6 أحرف على الأقل" />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: '0.85rem' }}>
+                            <i className="fas fa-shield-halved" style={{ color: 'var(--text-muted)', fontSize: 12 }}></i>
+                            الصلاحية
+                        </label>
+                        <select value={newRole} onChange={(e) => setNewRole(e.target.value)} style={{ minHeight: 40, fontSize: '0.85rem' }}>
+                            <option value="viewer">متابع</option>
+                            <option value="data_entry">مُدخل بيانات</option>
+                        </select>
+                    </div>
+                    <button type="submit" className="btn btn-primary" disabled={adding} style={{
+                        minHeight: 40, justifyContent: 'center', borderRadius: 10,
+                        background: 'linear-gradient(135deg, #10b981, #059669)', fontSize: '0.9rem', fontWeight: 800, whiteSpace: 'nowrap',
                     }}>
-                        <li>اضغط على زر <strong style={{ color: '#93c5fd' }}>"فتح Supabase"</strong> أعلاه — ستنتقل إلى لوحة التحكم.</li>
-                        <li>من القائمة الجانبية اليسرى، اختر <strong style={{ color: '#93c5fd' }}>Authentication</strong> ثم <strong style={{ color: '#93c5fd' }}>Users</strong>.</li>
-                        <li>اضغط على <strong style={{ color: '#93c5fd' }}>"Add User"</strong> (أعلى اليمين).</li>
-                        <li>أدخل <strong>البريد الإلكتروني</strong> للمستخدم وكلمة المرور (يمكن للمستخدم تغييرها لاحقاً).</li>
-                        <li>في حقل <strong style={{ color: '#93c5fd' }}>Email Confirm</strong>، تأكد من تشغيل الخيار (✔) ليتم تأكيد البريد تلقائياً.</li>
-                        <li>اضغط <strong style={{ color: '#93c5fd' }}>"Create User"</strong> — سيتم إنشاء الحساب فوراً.</li>
-                        <li>عُد إلى هذه الصفحة — سيظهر المستخدم الجديد في الجدول أدناه بصلاحية <strong>"متابع"</strong>.</li>
-                        <li>لتغيير صلاحيته، اختر الصلاحية المناسبة من القائمة المنسدلة (<strong>متابع / مُدخل بيانات / مدير النظام</strong>).</li>
-                    </ol>
-                </div>
+                        {adding ? 'جاري الإنشاء...' : (
+                            <> <i className="fas fa-user-plus"></i> إضافة </>
+                        )}
+                    </button>
+                </form>
 
                 <div style={{
                     marginTop: 14, display: 'flex', alignItems: 'center', gap: 10,
                     fontSize: '0.78rem', color: 'var(--text-muted)',
                 }}>
                     <i className="fas fa-shield-alt" style={{ color: '#f59e0b' }}></i>
-                    ملاحظة: الصلاحية الافتراضية هي <strong>متابع</strong> (قراءة فقط) حفاظاً على الأمان. يمكنك ترقية الصلاحية بعد الإنشاء.
+                    يمكن للمستخدم تسجيل الدخول باسمه وكلمة مروره مباشرة. لتعديل الصلاحية لاحقاً استخدم القائمة في الجدول أدناه.
                 </div>
             </div>
 

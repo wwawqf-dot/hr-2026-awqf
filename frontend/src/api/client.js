@@ -234,6 +234,23 @@ export const api = {
             })),
         };
     },
+    // Create an account directly in the app: NAME + PASSWORD + role.
+    // The server generates an internal-only email; the UI never shows it.
+    createUser: async ({ username, password, role = 'viewer' }) => {
+        const result = await rpc('create_user', {
+            p_email: 'pending@internal.local',
+            p_password: password,
+            p_username: username,
+            p_role: role,
+        });
+        return { message: `تم إنشاء المستخدم "${username}" بنجاح`, ...result };
+    },
+    // Resolve a typed username (or email) to the auth email used by
+    // signInWithPassword — lets users log in with their name only.
+    resolveLogin: async (identifier) => {
+        const email = await rpc('resolve_login', { p_identifier: identifier });
+        return email;
+    },
     updateUserRole: async (userId, newRole) => {
         await rpc('update_user_role', { p_user_id: userId, p_new_role: newRole });
         return { message: 'تم تحديث الصلاحية' };

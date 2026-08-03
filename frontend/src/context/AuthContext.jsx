@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import { ApiError, setOnAuthExpired } from '../api/client';
+import { api } from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -67,9 +68,20 @@ export function AuthProvider({ children }) {
         });
     }, []);
 
-    const login = useCallback(async (username, password) => {
+    const login = useCallback(async (ident, password) => {
+        // Resolve a name (or email) to the auth email first, so users can
+        // sign in with their username only — the server generates internal
+        // emails (wqf-...@internal.local) that are never shown.
+        let email = String(ident).trim();
+        if (!email) throw new ApiError('يرجى إدخال اسم المستخدم أو البريد الإلكتروني', 400);
+        if (!email.includes('@')) {
+            const resolved = await api.resolveLogin(email);
+            if (!resolved) throw new ApiError('اسم المستخدم غير موجود', 400);
+            email = resolved;
+        }
+
         const { data, error } = await supabase.auth.signInWithPassword({
-            email: String(username).trim(),
+            email,
             password,
         });
         if (error) throw new ApiError(mapAuthError(error.message), 400);
