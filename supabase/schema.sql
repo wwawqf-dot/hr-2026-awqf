@@ -2535,6 +2535,7 @@ grant execute on function public.log_activity(text, text) to authenticated;
 -- redeem it, and gain the right to alter employee balances.
 drop policy if exists "authenticated can read invite_codes" on public.invite_codes;
 drop policy if exists invite_codes_select on public.invite_codes;
+drop policy if exists "admin can read invite_codes" on public.invite_codes;
 create policy "admin can read invite_codes"
     on public.invite_codes for select
     to authenticated
