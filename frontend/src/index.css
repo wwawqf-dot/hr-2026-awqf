@@ -76,7 +76,7 @@ body {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1.5rem;
-    padding: 1.5rem 2rem;
+    padding: clamp(0.85rem, 2.2vw, 1.5rem) clamp(0.9rem, 2.8vw, 2rem);
     background: var(--glass-bg);
     backdrop-filter: blur(16px);
     border-radius: 20px;
@@ -88,37 +88,53 @@ body {
 
 /* Logo + title travel together so the header's space-between still pushes
    the action buttons to the far edge. In RTL the first child renders
-   right-most, which puts the emblem on the outer right. */
+   right-most, which puts the emblem on the outer right.
+   min-width:0 lets the title shrink instead of forcing the row wider than
+   the screen on a narrow phone. */
 .brand {
     display: flex;
     align-items: center;
-    gap: 1.25rem;
+    gap: clamp(0.65rem, 1.6vw, 1.25rem);
     min-width: 0;
+    flex: 1 1 auto;
 }
 
-/* The emblem is pure white on transparency, so it needs no plate on the
-   dark glass — just a faint glow to keep it from looking pasted on. */
+/* Sized fluidly rather than in breakpoint steps: the emblem is portrait
+   (≈1:2.3), so a height that reads well on a laptop is tall enough on a
+   phone to push the title off the row. clamp scales it continuously and
+   still guarantees a legible floor at 320px.
+   It is pure white on transparency, so it needs no plate on the dark
+   glass — just a faint glow to keep it from looking pasted on. */
 .brand-logo {
-    height: 78px;
+    /* The base + vw pair (rather than vw alone) is what keeps the growth
+       curve gentle: pure vw either pins to the floor across every phone
+       and tablet, or overshoots on desktop. This passes ~46px at 375px,
+       ~59px at 768px, ~68px at 1024px and tops out at 78px. */
+    height: clamp(44px, 2rem + 3.5vw, 78px);
     width: auto;
     flex-shrink: 0;
     filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.28));
 }
 
+.title { min-width: 0; }
+
 .title h1 {
-    font-size: 1.8rem;
+    font-size: clamp(1.05rem, 0.75rem + 1.3vw, 1.8rem);
     color: var(--emerald);
     font-weight: 800;
     margin-bottom: 0.3rem;
     text-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+    overflow-wrap: break-word;
+    line-height: 1.25;
 }
-.title p { color: var(--text-muted); font-size: 0.95rem; }
+.title p { color: var(--text-muted); font-size: clamp(0.76rem, 0.62rem + 0.42vw, 0.95rem); }
 .title p.org-line {
-    font-size: 0.95rem;
+    font-size: clamp(0.76rem, 0.62rem + 0.42vw, 0.95rem);
     font-weight: 500;
     letter-spacing: 0.3px;
     color: var(--text-muted);
     opacity: 0.85;
+    overflow-wrap: break-word;
 }
 
 .header-user {
@@ -723,8 +739,7 @@ code {
 /* ---------- Tablet / iPad (portrait & landscape) ---------- */
 @media (min-width: 769px) and (max-width: 1024px) {
     .app-shell { padding: 1.5rem; }
-    .header { padding: 1.25rem 1.5rem; }
-    .header .title h1 { font-size: 1.5rem; }
+    /* header padding and .title h1 size are fluid (clamp) — no step here */
     .regulations-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
     th, td { padding: 0.9rem 0.9rem; }
     .table-container { border-radius: 16px; }
@@ -737,15 +752,12 @@ code {
 @media (max-width: 768px) {
     .app-shell { padding: 0.75rem; }
 
+    /* Stack the brand above the action buttons; logo + title stay on one
+       row inside .brand. Sizes stay fluid (clamp) — no steps needed. */
     .header {
-        padding: 1rem;
         flex-direction: column;
         align-items: stretch;
     }
-    .brand { gap: 0.9rem; }
-    .brand-logo { height: 58px; }
-    .title h1 { font-size: 1.3rem; }
-    .title p, .title p.org-line { font-size: 0.82rem; }
     .header-user { flex-wrap: wrap; }
     .actions { width: 100%; justify-content: stretch; }
     .actions .btn { flex: 1; justify-content: center; }
@@ -822,10 +834,7 @@ code {
 /* ---------- Small phones (under 420px) ---------- */
 @media (max-width: 420px) {
     .app-shell { padding: 0.5rem; }
-    .header { padding: 0.75rem; border-radius: 14px; }
-    .brand { gap: 0.7rem; }
-    .brand-logo { height: 46px; }
-    .title h1 { font-size: 1.1rem; }
+    .header { border-radius: 14px; }
     .nav-tab { padding: 0.7rem 0.85rem; font-size: 0.82rem; }
     th, td { padding: 0.5rem 0.4rem; font-size: 0.72rem; }
     th { font-size: 0.7rem; }
