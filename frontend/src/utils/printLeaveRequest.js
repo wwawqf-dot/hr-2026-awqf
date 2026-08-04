@@ -66,12 +66,14 @@ const FIELDS = {
     '141.57,658.93': { key: 'cutoffMonth',    dx: 14.7, size: 11.42 },
     '81.79,658.93':  { key: 'cutoffYear',     dx: 23.2, size: 11.42 },
 
-    // الرصيد المتبقي
+    // الرصيد المتبقي — its "إلى غاية" is the leave's END date, not the
+    // accrual cut-off the two rows above use: the balance shown here is
+    // what is left once this leave has been taken in full.
     '428.98,684.39': { key: 'remainingNum',   dx: 14.1, size: 10.08 },
     '269.26,679.51': { key: 'remainingWords', dx: 48.4, size: 11.42, maxW: 150 },
-    '184.76,679.56': { key: 'cutoffDay',      dx: 13.0, size: 11.42 },
-    '148.92,679.56': { key: 'cutoffMonth',    dx: 14.7, size: 11.42 },
-    '89.14,679.56':  { key: 'cutoffYear',     dx: 23.2, size: 11.42 },
+    '184.76,679.56': { key: 'remainingDay',   dx: 13.0, size: 11.42 },
+    '148.92,679.56': { key: 'remainingMonth', dx: 14.7, size: 11.42 },
+    '89.14,679.56':  { key: 'remainingYear',  dx: 23.2, size: 11.42 },
 };
 
 function escapeXml(value) {
@@ -234,6 +236,12 @@ export function buildLeaveRequestValues(employee, deduction, entitledBeforeDays)
         requestedWords: numberToArabicWords(requested),
         remainingNum: String(remaining),
         remainingWords: numberToArabicWords(remaining),
+        // The remaining balance is dated by when the leave actually ends.
+        // A dateless deduction has no end date, so it falls back to the
+        // accrual cut-off rather than printing three empty blanks.
+        remainingDay: end.day || cutoffDay,
+        remainingMonth: end.month || cutoffMonth,
+        remainingYear: end.year || cutoffYear,
 
         cutoffDay, cutoffMonth, cutoffYear,
     };
