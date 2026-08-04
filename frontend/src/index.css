@@ -86,6 +86,25 @@ body {
     gap: 1rem;
 }
 
+/* Logo + title travel together so the header's space-between still pushes
+   the action buttons to the far edge. In RTL the first child renders
+   right-most, which puts the emblem on the outer right. */
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    min-width: 0;
+}
+
+/* The emblem is pure white on transparency, so it needs no plate on the
+   dark glass — just a faint glow to keep it from looking pasted on. */
+.brand-logo {
+    height: 78px;
+    width: auto;
+    flex-shrink: 0;
+    filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.28));
+}
+
 .title h1 {
     font-size: 1.8rem;
     color: var(--emerald);
@@ -723,6 +742,8 @@ code {
         flex-direction: column;
         align-items: stretch;
     }
+    .brand { gap: 0.9rem; }
+    .brand-logo { height: 58px; }
     .title h1 { font-size: 1.3rem; }
     .title p, .title p.org-line { font-size: 0.82rem; }
     .header-user { flex-wrap: wrap; }
@@ -802,6 +823,8 @@ code {
 @media (max-width: 420px) {
     .app-shell { padding: 0.5rem; }
     .header { padding: 0.75rem; border-radius: 14px; }
+    .brand { gap: 0.7rem; }
+    .brand-logo { height: 46px; }
     .title h1 { font-size: 1.1rem; }
     .nav-tab { padding: 0.7rem 0.85rem; font-size: 0.82rem; }
     th, td { padding: 0.5rem 0.4rem; font-size: 0.72rem; }
@@ -824,6 +847,14 @@ code {
 
     .header .actions, .search-container, footer.footer, .actions-col {
         display: none !important;
+    }
+
+    /* The emblem is white artwork for the dark UI; browsers drop page
+       backgrounds when printing, so on white paper it would come out
+       invisible. Inverting turns the same file black. */
+    .brand-logo {
+        height: 52px;
+        filter: invert(1) !important;
     }
 
     .table-container {

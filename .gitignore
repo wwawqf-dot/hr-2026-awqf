@@ -19,5 +19,6 @@ backend/database/*.db
 backend/database/*.db-*
 *.log
 .DS_Store
+desktop.ini
 launcher/bin/
 launcher/obj/
