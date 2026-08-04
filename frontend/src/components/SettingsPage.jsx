@@ -51,8 +51,10 @@ export default function SettingsPage({ leaveData }) {
         years, settings, loading, error, addYear, deleteYear, updateSettings,
         exportBackup, importBackup, deleteAllRecords,
         getArchivedEmployees, restoreEmployee, getArchivedYears, restoreYear,
-        finalizeYear, listYearArchives, getYearArchive,
+        finalizeYear, listYearArchives, getYearArchive, reconcileCounters,
     } = leaveData;
+
+    const [reconciling, setReconciling] = useState(false);
 
     const [newYear, setNewYear] = useState('');
     const [defaultAdded, setDefaultAdded] = useState(30);
@@ -312,6 +314,29 @@ export default function SettingsPage({ leaveData }) {
         setBackupSuccess('تم حذف جميع سجلات الموظفين بنجاح.');
     }
 
+    // Audits every employee-year counter against the deduction register it
+    // is supposed to summarise. Imports repair themselves now, so this is
+    // for data that predates that fix.
+    async function handleReconcile() {
+        setBackupError('');
+        setBackupSuccess('');
+        setReconciling(true);
+        try {
+            const result = await reconcileCounters();
+            const fixed = result?.fixed ?? 0;
+            logActivity('مطابقة عدّادات الخصم', `عدد الصفوف المصحّحة: ${fixed}`).catch(() => {});
+            setBackupSuccess(
+                fixed === 0
+                    ? 'تمت المطابقة: جميع العدّادات مطابقة تماماً لسجل الخصومات.'
+                    : `تمت المطابقة وتصحيح ${fixed} صفاً كان مخالفاً لسجل الخصومات.`
+            );
+        } catch (err) {
+            setBackupError(err.message || 'تعذر تنفيذ المطابقة');
+        } finally {
+            setReconciling(false);
+        }
+    }
+
     return (
         <>
             <PageHeader />
@@ -440,7 +465,21 @@ export default function SettingsPage({ leaveData }) {
                         style={{ display: 'none' }}
                         onChange={handleImportFile}
                     />
+                    <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={handleReconcile}
+                        disabled={reconciling}
+                        title="يتحقق من تطابق عدّادات الخصم مع سجل الخصومات ويصحّح أي فرق"
+                    >
+                        {reconciling && <LoadingSpinner size={16} color="#10b981" style={{ marginLeft: 8 }} />}
+                        <i className="fas fa-scale-balanced"></i> {reconciling ? 'جاري المطابقة...' : 'مطابقة العدّادات'}
+                    </button>
                 </div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.9rem' }}>
+                    <i className="fas fa-circle-info" style={{ color: '#60a5fa', marginLeft: 6 }}></i>
+                    "مطابقة العدّادات" تعيد حساب أيام الخصم المسجّلة لكل موظف من سجل خصوماته الفعلي، وتصحّح أي فرق نتج عن استيراد نسخة قديمة.
+                </p>
             </div>
 
             <div className="panel">

@@ -1,24 +1,21 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { api } from '../api/client';
 import LoadingSpinner from './LoadingSpinner';
 
-function parseInviteCode(code) {
-    if (!code) return null;
-    const parts = code.split('-');
-    if (parts.length < 3 || parts[0] !== 'WQF') return null;
-    const role = parts[1];
-    if (role !== 'data_entry' && role !== 'viewer') return null;
-    return { role, code };
-}
+const ROLE_LABELS = { data_entry: 'مُدخل بيانات', viewer: 'متابع' };
 
 export default function RegistrationPortal() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const urlCode = searchParams.get('code') || '';
+    const urlCode = (searchParams.get('code') || '').trim();
 
-    const invite = useMemo(() => parseInviteCode(urlCode), [urlCode]);
+    // The granted role is no longer readable from the code text — codes are
+    // now opaque (WQF-<random hex>) and only the server can say what a code
+    // is worth, so it is fetched once on mount.
+    const [invite, setInvite] = useState(null);
+    const [checkingCode, setCheckingCode] = useState(!!urlCode);
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -26,7 +23,27 @@ export default function RegistrationPortal() {
     const [registering, setRegistering] = useState(false);
     const [regError, setRegError] = useState('');
     const [success, setSuccess] = useState('');
-    const [step, setStep] = useState(invite ? 'register' : 'code');
+    const [step, setStep] = useState('code');
+
+    useEffect(() => {
+        let active = true;
+        if (!urlCode) { setCheckingCode(false); setStep('code'); return undefined; }
+
+        (async () => {
+            const result = await api.validateInviteCode(urlCode);
+            if (!active) return;
+            if (result.valid) {
+                setInvite({ role: result.role, code: urlCode });
+                setStep('register');
+            } else {
+                setRegError(result.error || 'رمز الدعوة غير صحيح أو مستخدم مسبقاً');
+                setStep('code');
+            }
+            setCheckingCode(false);
+        })();
+
+        return () => { active = false; };
+    }, [urlCode]);
 
     async function handleRegister(e) {
         e.preventDefault();
@@ -34,17 +51,15 @@ export default function RegistrationPortal() {
         setSuccess('');
 
         const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRe.test(email) || password.length < 6 || !name.trim()) {
-            setRegError('يرجى ملء جميع الحقول: الاسم، بريد إلكتروني صحيح، وكلمة مرور 6 أحرف على الأقل');
+        if (!emailRe.test(email) || password.length < 8 || !name.trim()) {
+            setRegError('يرجى ملء جميع الحقول: الاسم، بريد إلكتروني صحيح، وكلمة مرور 8 أحرف على الأقل');
             return;
         }
 
         setRegistering(true);
         try {
-            // Verify the code against the database BEFORE creating an account —
-            // `invite` above is parsed from the URL text alone (WQF-<role>-<rand>),
-            // never checked against invite_codes. A stale, fabricated, or already
-            // -used code must not be allowed to reach signUp at all.
+            // Re-verify immediately before signUp: the code may have been
+            // redeemed by someone else, or revoked, since this page loaded.
             const codeCheck = await api.validateInviteCode(urlCode);
             if (!codeCheck.valid) throw new Error(codeCheck.error || 'رمز الدعوة غير صحيح أو مستخدم مسبقاً');
 
@@ -106,11 +121,20 @@ export default function RegistrationPortal() {
                     </p>
                 </div>
 
-                {step === 'code' && (
+                {checkingCode && (
+                    <div style={{ padding: '2rem 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                        <LoadingSpinner size={24} color="#8b5cf6" />
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
+                            جاري التحقق من رمز الدعوة...
+                        </p>
+                    </div>
+                )}
+
+                {!checkingCode && step === 'code' && (
                     <div style={{ padding: '1.5rem 0' }}>
                         <div className="form-error" style={{ marginBottom: 16, padding: '1rem', fontSize: '0.9rem' }}>
                             <i className="fas fa-info-circle" style={{ marginLeft: 6 }}></i>
-                            إنشاء الحساب متاح فقط عبر رابط دعوة من المسؤول.
+                            {regError || 'إنشاء الحساب متاح فقط عبر رابط دعوة من المسؤول.'}
                         </div>
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                             يُرجى التواصل مع مدير النظام للحصول على رابط التسجيل.
@@ -119,7 +143,7 @@ export default function RegistrationPortal() {
                 )}
 
                 {/* Registration Form */}
-                {step === 'register' && (
+                {!checkingCode && step === 'register' && (
                     <form onSubmit={handleRegister}>
                         {success ? (
                             <div style={{ padding: '1.5rem 0' }}>
@@ -139,7 +163,7 @@ export default function RegistrationPortal() {
                                     }}>
                                         <i className="fas fa-tag"></i>
                                         <span style={{ marginRight: 'auto', fontSize: '0.82rem' }}>
-                                            صلاحية: {invite.role === 'data_entry' ? 'مُدخل بيانات' : 'متابع'}
+                                            صلاحية: {ROLE_LABELS[invite.role] || invite.role}
                                         </span>
                                     </div>
                                 )}
@@ -165,7 +189,7 @@ export default function RegistrationPortal() {
                                         <i className="fas fa-lock" style={{ color: 'var(--text-muted)', fontSize: 13 }}></i>
                                         كلمة المرور
                                     </label>
-                                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="6 أحرف على الأقل" style={{ direction: 'ltr', textAlign: 'left' }} dir="ltr" />
+                                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="8 أحرف على الأقل" style={{ direction: 'ltr', textAlign: 'left' }} dir="ltr" />
                                 </div>
 
                                 <button type="submit" className="btn btn-primary" disabled={registering} style={{

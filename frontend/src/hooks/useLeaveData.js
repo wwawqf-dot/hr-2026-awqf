@@ -158,6 +158,12 @@ export function useLeaveData(enabled = true) {
         return data;
     }
 
+    async function reconcileCounters() {
+        const data = await api.reconcileCounters();
+        await refresh();
+        return data;
+    }
+
     return {
         employees,
         years,
@@ -183,5 +189,6 @@ export function useLeaveData(enabled = true) {
         exportBackup,
         importBackup,
         deleteAllRecords,
+        reconcileCounters,
     };
 }

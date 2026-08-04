@@ -15,9 +15,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Must succeed before anything is published. This job used to carry
+  # continue-on-error, and `build` did not depend on it, so a failed
+  # migration still shipped a frontend that called RPCs the database did
+  # not have — the schema drift the app's own 404 message describes.
   db-push:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -33,7 +36,7 @@ jobs:
           supabase db push
 
   build:
-    needs: []
+    needs: [db-push]
     runs-on: ubuntu-latest
     defaults:
       run:

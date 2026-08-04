@@ -75,9 +75,12 @@ export function AuthProvider({ children }) {
         let email = String(ident).trim();
         if (!email) throw new ApiError('يرجى إدخال اسم المستخدم أو البريد الإلكتروني', 400);
         if (!email.includes('@')) {
+            // A distinct "username not found" message let anyone probe which
+            // accounts exist before ever trying a password. The RPC now
+            // returns an unusable address for unknown names, so sign-in
+            // fails with the same generic message either way.
             const resolved = await api.resolveLogin(email);
-            if (!resolved) throw new ApiError('اسم المستخدم غير موجود', 400);
-            email = resolved;
+            email = resolved || `unknown-${encodeURIComponent(email)}@invalid.local`;
         }
 
         const { data, error } = await supabase.auth.signInWithPassword({

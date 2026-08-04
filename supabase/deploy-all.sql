@@ -1,4 +1,34 @@
 -- =====================================================================
+--  ⛔ DEPRECATED — DO NOT RUN THIS FILE
+-- =====================================================================
+--  This snapshot stopped being maintained long before the current
+--  schema. It predates year_archives, in-app user creation, the
+--  soft-delete architecture, and the 2026-08-04 security hardening.
+--
+--  Because every function here is CREATE OR REPLACE, running it against
+--  a live database SILENTLY REVERTS the fixed versions back to the
+--  vulnerable ones — most importantly consume_invite_code(), which in
+--  this file lets any logged-in 'viewer' redeem an invite code and
+--  promote itself to 'data_entry'.
+--
+--  The authoritative sources are, in order:
+--    1. supabase/migrations/   (applied by `supabase db push` — use this)
+--    2. supabase/schema.sql    (full reference, safe to paste in the
+--                               SQL Editor for a fresh project)
+--
+--  The guard below aborts the script if it is pasted in by mistake. To
+--  study the historical schema, read the file — don't execute it.
+-- =====================================================================
+do $$
+begin
+    raise exception using
+        message = 'deploy-all.sql معطّل: تشغيله يُعيد ثغرات أمنية سبق إصلاحها. استخدم supabase/schema.sql أو supabase/migrations بدلاً منه.';
+end;
+$$;
+
+-- =====================================================================
+--  Historical content below (for reference only).
+-- =====================================================================
 --  Leave Management System — Secure Supabase schema
 --  نظام إدارة الإجازات — مخطط قاعدة البيانات الآمن
 -- =====================================================================

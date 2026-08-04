@@ -2,11 +2,13 @@ import { supabase } from '../supabaseClient';
 
 const ACTIVITY_PAGE_SIZE = 50;
 
+// Routed through log_activity() rather than a direct insert: the table's
+// old policy accepted any user_email the caller typed, so the trail that
+// answers "who did this" was forgeable by anyone holding a session. The
+// RPC stamps the identity from auth.uid() server-side.
 export async function logActivity(actionType, details) {
     try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const userEmail = session?.user?.email || 'غير معروف';
-        await supabase.from('activity_logs').insert({ user_email: userEmail, action_type: actionType, details });
+        await supabase.rpc('log_activity', { p_action_type: actionType, p_details: details });
     } catch (e) {
         console.warn('[logActivity] فشل تسجيل النشاط:', e);
     }
@@ -74,7 +76,7 @@ function classifyError(error) {
     if (isBusinessException(error)) return { status: 400, message: error.message };
     if (isPostgresError(error)) return { status: 400, message: error.message };
     if (isServerError(error))  return { status: 503, message: SERVER_MSG };
-    if (isMissingRelation(error)) return { status: 404, message: 'جدول غير موجود في قاعدة البيانات. يُرجى تشغيل SQL النشر من supabase/deploy-all.sql عبر Dashboard.' };
+    if (isMissingRelation(error)) return { status: 404, message: 'جدول أو دالة غير موجودة في قاعدة البيانات — لم تُطبَّق آخر التحديثات. يُرجى تشغيل supabase/schema.sql عبر Dashboard، أو تنفيذ supabase db push.' };
     return null;
 }
 
@@ -266,39 +268,28 @@ export const api = {
     },
 
     // ---- Invite codes -------------------------------------------------
-    generateInviteCode: async (role) => {
-        const rand = Array.from({ length: 10 }, () =>
-            Math.floor(Math.random() * 16).toString(16)
-        ).join('');
-        const code = `WQF-${role}-${rand}`;
-        await safeSupabase(
-            supabase.from('invite_codes').insert({ code, role })
-        );
-        return code;
-    },
+    // Generated server-side with gen_random_bytes. The browser used to
+    // mint these with Math.random() and spell the granted role out inside
+    // the code itself.
+    generateInviteCode: (role) => rpc('generate_invite_code', { p_role: role }),
     getInviteCodes: async () => {
         const rows = await safeSupabase(
             supabase.from('invite_codes').select('*').order('created_at', { ascending: false })
         );
         return { codes: rows || [] };
     },
+    // Runs before sign-up, when there is no session yet, so it has to go
+    // through the RPC — the table itself is admin-read-only now.
     validateInviteCode: async (code) => {
         try {
-            const row = await safeSupabase(
-                supabase.from('invite_codes').select('role').eq('code', code).eq('is_used', false).single()
-            );
-            return { valid: true, role: row.role, code };
+            const role = await rpc('validate_invite_code', { p_code: code });
+            return { valid: true, role, code };
         } catch (e) {
-            if (e instanceof ApiError && e.status === 406) {
-                return { valid: false, error: 'رمز الدعوة غير صحيح أو مستخدم مسبقاً' };
-            }
-            throw e;
+            return { valid: false, error: e.message || 'رمز الدعوة غير صحيح أو مستخدم مسبقاً' };
         }
     },
     consumeInviteCode: async (code) => {
-        await safeSupabase(
-            supabase.rpc('consume_invite_code', { p_code: code })
-        );
+        await rpc('consume_invite_code', { p_code: code });
         return { message: 'تم استهلاك رمز الدعوة' };
     },
 
@@ -328,6 +319,12 @@ export const api = {
             hasMore: to + 1 < total,
         };
     },
+
+    // ---- Integrity ----------------------------------------------------
+    // Recomputes every employee_years.deducted from the deduction register
+    // and reports how many rows disagreed. Import already self-heals; this
+    // is the manual audit for data that predates that fix.
+    reconcileCounters: () => rpc('reconcile_all_counters'),
 
     // ---- Backup -------------------------------------------------------
     exportBackup: () => rpc('export_all'),

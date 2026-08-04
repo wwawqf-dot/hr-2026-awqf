@@ -83,8 +83,8 @@ export default function UsersPage() {
             setToast({ type: 'error', message: 'يرجى إدخال اسم المستخدم وكلمة المرور' });
             return;
         }
-        if (newPassword.length < 6) {
-            setToast({ type: 'error', message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
+        if (newPassword.length < 8) {
+            setToast({ type: 'error', message: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' });
             return;
         }
         setAdding(true);
@@ -170,7 +170,7 @@ export default function UsersPage() {
                             <i className="fas fa-lock" style={{ color: 'var(--text-muted)', fontSize: 12 }}></i>
                             كلمة المرور
                         </label>
-                        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="6 أحرف على الأقل" />
+                        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="8 أحرف على الأقل" />
                     </div>
                     <div className="form-group" style={{ margin: 0 }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: '0.85rem' }}>
