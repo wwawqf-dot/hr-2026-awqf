@@ -1,26 +1,6 @@
 import { formatDateDisplay } from './formatDate.js';
-import { getLibyaDisplayDate, getAccrualLabel, getAccruedDays, getLibyaYear } from './libyaTime.js';
-
-function computeNetCumulative(employee) {
-    const currentYear = getLibyaYear();
-    const monthlyRate = employee.over_45 ? 3.75 : 2.5;
-    const initial = parseFloat(employee.initial_carried_forward) || 0;
-    const yearsData = employee.years_data || {};
-    let balance = initial;
-    for (const [year, yd] of Object.entries(yearsData)) {
-        if (year === currentYear) {
-            // Phantom balance prevention: dynamic accrual for current year
-            balance += (employee.is_unpaid_leave ? 0 : getAccruedDays(Number(currentYear), monthlyRate, employee.hire_date_current_year))
-                       - (parseFloat(yd?.deducted) || 0);
-        } else {
-            balance += (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0);
-        }
-    }
-    if (!yearsData[currentYear]) {
-        balance += employee.is_unpaid_leave ? 0 : getAccruedDays(Number(currentYear), monthlyRate, employee.hire_date_current_year);
-    }
-    return balance;
-}
+import { getLibyaDisplayDate, getAccrualLabel, getLibyaYear } from './libyaTime.js';
+import { computeNetBalance, getYearAdded } from './leaveCalc.js';
 
 function computePreviousCarryOver(employee, years) {
     const currentYear = getLibyaYear();
@@ -49,16 +29,14 @@ export function printEmployeeStatement(employee) {
     // Single Tripoli conversion from the real instant — see libyaTime.js;
     // getLibyaTime().toLocaleDateString(timeZone:...) double-converts.
     const formattedDate = getLibyaDisplayDate(new Date());
-    const isUnpaid = employee.is_unpaid_leave === true;
-    const netCumulative = computeNetCumulative(employee);
+    const netCumulative = computeNetBalance(employee);
     const prevCarry = computePreviousCarryOver(employee, years);
-    const monthlyRate = employee.over_45 ? 3.75 : 2.5;
-    const accruedLabel = getAccrualLabel();
-    // Unpaid leave freezes the current year's accrual, but historical
-    // carry-over and total deductions across all years remain visible.
-    const accruedDays = isUnpaid
-        ? 0
-        : getAccruedDays(Number(getLibyaYear()), monthlyRate, employee.hire_date_current_year);
+    const currentYear = getLibyaYear();
+    const grantedLabel = getAccrualLabel();
+    // The current year's grant, as stored. Unpaid leave freezes it at 0,
+    // but historical carry-over and total deductions across all years
+    // remain visible.
+    const grantedDays = getYearAdded(employee, currentYear, currentYear);
     const totalDeducted = Object.values(employee.years_data || {}).reduce(
         (sum, yd) => sum + (parseFloat(yd?.deducted) || 0), 0
     );
@@ -144,7 +122,7 @@ export function printEmployeeStatement(employee) {
         <!-- Summary-only cards -->
         <div class="summary-grid">
             <div class="summary-card">الرصيد المرحّل من السنوات السابقة<span class="val blue">${prevCarry}</span></div>
-            <div class="summary-card">${accruedLabel}<span class="val green">${accruedDays}</span></div>
+            <div class="summary-card">${grantedLabel}<span class="val green">${grantedDays}</span></div>
             <div class="summary-card">إجمالي المخصوم<span class="val red">${totalDeducted}</span></div>
             <div class="summary-card">الصافي التراكمي الحالي<span class="val green">${netCumulative}</span></div>
         </div>

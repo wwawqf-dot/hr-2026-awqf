@@ -1,6 +1,6 @@
 import { Fragment, useMemo } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
-import { getLastDayPrevMonthStr, getLibyaYear } from '../utils/libyaTime';
+import { getYearEndDateStr, getLibyaYear } from '../utils/libyaTime';
 import { computeYearlyLedger } from '../utils/leaveCalc';
 
 export default function EmployeesTable({ employees, years, onDeduct, onEdit, onDelete }) {
@@ -23,11 +23,13 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
         );
     }
 
-    // Full "dd/mm/yyyy" — do NOT truncate. A truncated "dd/mm" silently drops
+    // Full "dd/mm/yyyy" — do NOT truncate. A truncated "31/12" silently drops
     // the year, which is exactly wrong the one week a year that matters:
-    // right after a year flip, when last month's date and this year's date
-    // are in different years (e.g. "31/12/2026" vs "31/01/2027").
-    const accrualDateFull = getLastDayPrevMonthStr();
+    // right after a year flip, when the closing year and the newly opened
+    // one sit side by side in the table (e.g. "31/12/2026" vs "31/12/2027").
+    // The whole year's days are granted up front, so this is the year's own
+    // end date and it rolls over by itself each 1 January.
+    const allocationEndDate = getYearEndDateStr();
 
     return (
         <div className="table-container compact-table">
@@ -56,7 +58,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                                         {yn === realLibyaYear ? (
                                             <div className="added-header-stack">
                                                 <span>مضاف {year}</span>
-                                                <span className="added-header-sub">(حتى {accrualDateFull})</span>
+                                                <span className="added-header-sub">(حتى {allocationEndDate})</span>
                                             </div>
                                         ) : `مضاف ${year}`}
                                     </th>
@@ -69,16 +71,12 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                 </thead>
                 <tbody>
                     {sortedEmployees.map((emp, index) => {
-                        const monthlyRate = emp.over_45 ? 3.75 : 2.5;
-                        // Explicit force-zero at the data-prep step for this row:
-                        // computeYearlyLedger already early-returns all-zero rows
-                        // for is_unpaid_leave, but that guard lives one layer
-                        // down inside a shared utility. Re-asserting it here,
-                        // right where the table decides what to render, means
-                        // the zero-out can never silently regress if that
-                        // utility is ever refactored without this call site
-                        // in mind.
-                        const enrichedLedger = computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
+                        // Reads the stored grant for every year verbatim; the
+                        // only figure it derives is the running carry-forward.
+                        // is_unpaid_leave zeroing lives inside the shared
+                        // utility so the table, the print report and the Excel
+                        // export can never disagree about it.
+                        const enrichedLedger = computeYearlyLedger(emp, years, realLibyaYear);
 
                         return (
                             <tr key={emp.id} style={emp.is_frozen ? { opacity: 0.6 } : undefined}>

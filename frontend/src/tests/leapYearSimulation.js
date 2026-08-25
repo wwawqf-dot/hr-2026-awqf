@@ -2,18 +2,21 @@
 //  runLeapYearSimulation()
 //  ------------------------
 //  Proves February is never hardcoded anywhere in the date-math engine.
-//  Every date function in this app derives month length from the native
-//  JS Date object's own calendar arithmetic (setDate(0) to roll back to
-//  the last day of the previous month, or day-by-day getDay() loops) —
-//  never a literal `28`/`29`/`30`/`31` day-count constant. This test
-//  proves that engine behaves correctly across four real leap-year
-//  boundaries, tied to Africa/Tripoli via getAccruedMonths/
-//  getLastDayPrevMonthStr (see libyaTime.js).
+//  calculateDeductionDays() derives month length from the native JS Date
+//  object's own calendar arithmetic (a day-by-day getDay() loop) — never a
+//  literal `28`/`29`/`30`/`31` day-count constant — so a leave spanning
+//  February counts the 29th exactly when the year really has one.
+//
+//  It also pins the other half of the story: since the move to manual
+//  annual allocation, the "مضاف حتى" label is the financial year's own end
+//  date, so month length stopped being able to influence it at all. That
+//  is asserted here rather than assumed, because it is the property that
+//  replaced the old month-end cut-off (see libyaTime.js).
 //
 //  Run: node src/tests/leapYearSimulation.js
 // =====================================================================
 import { pathToFileURL } from 'node:url';
-import { getLastDayPrevMonthStr, getAccruedMonths } from '../utils/libyaTime.js';
+import { getYearEndDateStr, getAccrualLabel } from '../utils/libyaTime.js';
 import { calculateDeductionDays } from '../utils/deductionDays.js';
 
 let pass = 0;
@@ -33,30 +36,22 @@ export function runLeapYearSimulation() {
     console.log('══════════════════════════════════════════\n');
 
     // -------------------------------------------------------------
-    // getLastDayPrevMonthStr(): on March 1st, "last day of previous
-    // month" must be the 29th in a leap year and the 28th otherwise.
-    // Drives the "مضاف حتى ..." header text directly.
+    // getYearEndDateStr(): the allocation label is the financial year's
+    // own end date, so it must read 31/12 on every one of these days —
+    // leap year or not, and whatever month happens to have just closed.
     // -------------------------------------------------------------
-    console.log('-- getLastDayPrevMonthStr(): March 1 boundary --');
+    console.log('-- getYearEndDateStr(): immune to month length --');
+    for (const [y, leap] of [[2028, true], [2027, false], [2024, true], [2100, false], [2000, true]]) {
+        const mar1 = libyaInstant(y, 3, 1);
+        assert(
+            getYearEndDateStr(mar1) === `31/12/${y}`,
+            `March 1, ${y} (${leap ? 'leap' : 'non-leap'}) -> label date is 31/12/${y} (got ${getYearEndDateStr(mar1)})`
+        );
+    }
+    // Feb 29 itself: the one day that only exists in a leap year.
     assert(
-        getLastDayPrevMonthStr(libyaInstant(2028, 3, 1)) === '29/02/2028',
-        `March 1, 2028 (leap year) -> last day of Feb is 29/02/2028 (got ${getLastDayPrevMonthStr(libyaInstant(2028, 3, 1))})`
-    );
-    assert(
-        getLastDayPrevMonthStr(libyaInstant(2027, 3, 1)) === '28/02/2027',
-        `March 1, 2027 (non-leap) -> last day of Feb is 28/02/2027 (got ${getLastDayPrevMonthStr(libyaInstant(2027, 3, 1))})`
-    );
-    assert(
-        getLastDayPrevMonthStr(libyaInstant(2024, 3, 1)) === '29/02/2024',
-        `March 1, 2024 (leap year) -> last day of Feb is 29/02/2024 (got ${getLastDayPrevMonthStr(libyaInstant(2024, 3, 1))})`
-    );
-    assert(
-        getLastDayPrevMonthStr(libyaInstant(2100, 3, 1)) === '28/02/2100',
-        `March 1, 2100 (divisible by 100 but NOT 400 -> NOT a leap year) -> 28/02/2100 (got ${getLastDayPrevMonthStr(libyaInstant(2100, 3, 1))})`
-    );
-    assert(
-        getLastDayPrevMonthStr(libyaInstant(2000, 3, 1)) === '29/02/2000',
-        `March 1, 2000 (divisible by 400 -> IS a leap year) -> 29/02/2000 (got ${getLastDayPrevMonthStr(libyaInstant(2000, 3, 1))})`
+        getAccrualLabel(libyaInstant(2028, 2, 29)) === 'مضاف حتى 31/12/2028',
+        `on Feb 29, 2028 the header still reads "مضاف حتى 31/12/2028" (got "${getAccrualLabel(libyaInstant(2028, 2, 29))}")`
     );
 
     // -------------------------------------------------------------
@@ -86,21 +81,6 @@ export function runLeapYearSimulation() {
     assert(
         isFeb29Weekend ? leapSpan === nonLeapSpan - 0 || leapSpan === nonLeapSpan : leapSpan === nonLeapSpan + 1,
         `full-February day count differs correctly between leap (${leapSpan}) and non-leap (${nonLeapSpan}) years given Feb29's weekday`
-    );
-
-    // -------------------------------------------------------------
-    // getAccruedMonths(): accrual counts COMPLETED months regardless of
-    // how many days were in them — March 1 must show exactly 2 completed
-    // months (Jan, Feb) whether or not Feb had 29 days.
-    // -------------------------------------------------------------
-    console.log('\n-- getAccruedMonths(): consistent across leap/non-leap --');
-    assert(
-        getAccruedMonths(2028, libyaInstant(2028, 3, 1)) === 2,
-        `March 1, 2028 (leap): 2 completed months (Jan, Feb) regardless of Feb having 29 days (got ${getAccruedMonths(2028, libyaInstant(2028, 3, 1))})`
-    );
-    assert(
-        getAccruedMonths(2027, libyaInstant(2027, 3, 1)) === 2,
-        `March 1, 2027 (non-leap): 2 completed months (Jan, Feb) (got ${getAccruedMonths(2027, libyaInstant(2027, 3, 1))})`
     );
 
     // -------------------------------------------------------------

@@ -73,8 +73,7 @@ export async function exportEmployeesToExcel(employees, years) {
     const sortedEmployees = [...employees].sort((a, b) => (a.is_frozen ? 1 : 0) - (b.is_frozen ? 1 : 0));
 
     sortedEmployees.forEach((emp, idx) => {
-        const monthlyRate = emp.over_45 ? 3.75 : 2.5;
-        const ledger = computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
+        const ledger = computeYearlyLedger(emp, years, realLibyaYear);
         const rowData = [idx + 1, emp.name, emp.job_number || '-', emp.national_id || '-', emp.job_title || '-'];
 
         if (isMultiYear) {

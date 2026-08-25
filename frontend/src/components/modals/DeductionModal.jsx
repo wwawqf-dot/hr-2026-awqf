@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { calculateDeductionDays } from '../../utils/deductionDays';
 import { logActivity } from '../../api/client';
-import { getLibyaDateStr, getAccrualLabel, getAccruedDays, getLibyaYear } from '../../utils/libyaTime';
-import { computeFifoAudit } from '../../utils/leaveCalc';
+import { getLibyaDateStr, getAccrualLabel } from '../../utils/libyaTime';
+import { computeFifoAudit, computeNetBalance } from '../../utils/leaveCalc';
 import { printLeaveRequest, downloadLeaveRequestImage } from '../../utils/printLeaveRequest';
 import CustomConfirmModal from './CustomConfirmModal';
 import LoadingSpinner from '../LoadingSpinner';
@@ -28,47 +28,6 @@ function daysBetween(fromStr, toStr) {
     return Math.round((to - from) / 86400000);
 }
 
-function computeNetBalance(employee, monthlyRate) {
-    if (employee.is_unpaid_leave) {
-        // Unpaid leave: only the CURRENT year's accrual is frozen at 0.
-        // Historical carry-forward and past years' net are preserved so
-        // the balance reflects what the employee would have had.
-        const currentYear = getLibyaYear();
-        const initial = parseFloat(employee.initial_carried_forward) || 0;
-        const yearsData = employee.years_data || {};
-        let balance = initial;
-        for (const [year, yd] of Object.entries(yearsData)) {
-            if (year === currentYear) {
-                balance -= (parseFloat(yd?.deducted) || 0);
-            } else {
-                balance += (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0);
-            }
-        }
-        return balance;
-    }
-    const currentYear = getLibyaYear();
-    const initial = parseFloat(employee.initial_carried_forward) || 0;
-    const yearsData = employee.years_data || {};
-    let balance = initial;
-    for (const [year, yd] of Object.entries(yearsData)) {
-        if (year === currentYear) {
-            // Phantom balance prevention: use the DYNAMICALLY accrued days
-            // for the current year instead of the full-year allocation
-            // stored in the DB (e.g. 30 even in June when only 15 have
-            // been earned). This ensures the guard blocks deductions
-            // that would borrow from future unearned months.
-            balance += getAccruedDays(Number(currentYear), monthlyRate, employee.hire_date_current_year)
-                       - (parseFloat(yd?.deducted) || 0);
-        } else {
-            balance += (parseFloat(yd?.added) || 0) - (parseFloat(yd?.deducted) || 0);
-        }
-    }
-    if (!yearsData[currentYear]) {
-        balance += getAccruedDays(Number(currentYear), monthlyRate, employee.hire_date_current_year);
-    }
-    return balance;
-}
-
 export default function DeductionModal({ employee, systemYears = [], onClose, onSubmit, onDeleteDeduction }) {
     const { isAdmin } = useAuth();
     const [start, setStart] = useState('');
@@ -87,8 +46,7 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
     const [printing, setPrinting] = useState(false);
 
     const years = Object.keys(employee.years_data || {}).sort();
-    const monthlyRate = employee.over_45 ? 3.75 : 2.5;
-    const fifo = useMemo(() => computeFifoAudit(employee, years, monthlyRate), [employee, years, monthlyRate]);
+    const fifo = useMemo(() => computeFifoAudit(employee, years), [employee, years]);
 
     useEffect(() => {
         setStart(''); setEnd(''); setHolidays(0);
@@ -99,7 +57,7 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
     const hasUnknownDays = unknownDays !== '' && Number(unknownDays) > 0;
     const days = hasUnknownDays ? Number(unknownDays) : calculateDeductionDays(start, end, holidays);
 
-    const netBalance = computeNetBalance(employee, monthlyRate);
+    const netBalance = computeNetBalance(employee);
     const retroDaysLive = !hasUnknownDays && start ? daysBetween(start, localTodayStr()) : null;
     const retroBlocked = retroDaysLive !== null && retroDaysLive > RETRO_LIMIT_DAYS;
     const balanceBlocked = !employee.is_unpaid_leave && days > 0 && days > netBalance;
@@ -154,7 +112,7 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
             }
         }
 
-        if (!employee.is_unpaid_leave && days > computeNetBalance(employee, monthlyRate)) {
+        if (!employee.is_unpaid_leave && days > computeNetBalance(employee)) {
             setError('فشلت العملية: رصيد الموظف الحالي غير كافٍ لتغطية عدد أيام الخصم المطلوبة.');
             return;
         }

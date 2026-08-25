@@ -64,81 +64,45 @@ export function formatLibyaTimestamp(value, options = {}) {
     }).format(d);
 }
 
-// ---- Dynamic accrual helpers (no cron jobs) ----
+// ---- Annual allocation helpers (manual grant, no accrual) ----
+//
+// The system grants the FULL yearly entitlement up front, at the moment a
+// financial year is opened (add_year) or an employee is created — it is a
+// stored number on employee_years.added, not something recomputed from the
+// clock. Nothing here derives a balance from "how many months have closed"
+// any more; that monthly accrual engine (getAccruedDays/getAccruedMonths)
+// was removed when the system moved to manual allocation.
+//
+// What remains time-dependent is only: which calendar year is "now", and
+// the year-end date printed next to the allocation.
 //
 // Every helper below takes an OPTIONAL trailing `now` (a real Date instance)
 // defaulting to `new Date()`, so production callers are unaffected — but a
 // test can inject a simulated instant (e.g. "2027-01-15") and get back
 // exactly what the live system would compute on that real date. This is
 // the single source of "what time is it" for every function here: they all
-// route through `getLibyaFields(now)` rather than each calling `new Date()`
+// route through `getLibyaYearNum(now)` rather than each calling `new Date()`
 // independently, so a simulated date can never partially apply.
-function getLibyaFields(now = new Date()) {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
-    }).formatToParts(now);
-    const get = (type) => parts.find((p) => p.type === type).value;
-    return { year: Number(get('year')), month: Number(get('month')), day: Number(get('day')) };
+function getLibyaYearNum(now = new Date()) {
+    return Number(new Intl.DateTimeFormat('en-CA', {
+        timeZone: TIMEZONE, year: 'numeric',
+    }).format(now));
 }
 
 export function getLibyaYear(now = new Date()) {
-    return String(getLibyaFields(now).year);
+    return String(getLibyaYearNum(now));
 }
 
-// Completed months of `year` as of `now`. Past years are always fully
-// accrued (12); future years have accrued nothing (0); the active year
-// accrues one month per calendar month already CLOSED (month - 1, so the
-// still-in-progress current month never counts until it ends).
-export function getAccruedMonths(year, now = new Date()) {
-    const { year: ly, month } = getLibyaFields(now);
-    const targetYear = year == null ? ly : Number(year);
-    if (targetYear < ly) return 12;
-    if (targetYear > ly) return 0;
-    return Math.max(0, month - 1);
-}
-
-export function getLastDayPrevMonthStr(now = new Date()) {
-    const { year, month } = getLibyaFields(now);
-    const d = new Date(year, month - 1, 1);
-    d.setDate(0);
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    return `${dd}/${mm}/${yyyy}`;
+// The last day of the CURRENT financial year, "31/12/yyyy". This is the
+// date every "مضاف حتى ..." label prints: the allocation is granted in
+// full at the start of the year and therefore covers the year through to
+// its end — it is not a running month-by-month cut-off. It rolls over on
+// its own the moment Tripoli's calendar year does, so the label needs no
+// maintenance at each year end.
+export function getYearEndDateStr(now = new Date()) {
+    return `31/12/${getLibyaYearNum(now)}`;
 }
 
 export function getAccrualLabel(now = new Date()) {
-    return `مضاف حتى ${getLastDayPrevMonthStr(now)}`;
-}
-
-// Days accrued for `year` as of `now`: completed months × the age-based
-// monthly rate (2.5 => max 30/yr, 3.75 => max 45/yr), with the 15th-day
-// hire-date rule applied only when the hire date's year matches the
-// financial year being computed — after a year rollover the employee
-// switches to standard accrual (no more proration).
-export function getAccruedDays(year, monthlyRate = 2.5, hireDateCurrentYear = null, now = new Date()) {
-    const targetYear = Number(year);
-    const { year: currentYear, month: currentMonth } = getLibyaFields(now);
-
-    if (hireDateCurrentYear && targetYear === currentYear) {
-        const hireYear = Number(String(hireDateCurrentYear).split('-')[0]);
-        // If the employee was hired in a PREVIOUS year, their accrual
-        // has rolled over — they are a regular employee now, not a
-        // mid-year hire. Fall through to the standard calculation below.
-        if (hireYear === targetYear) {
-            const cutoffMonth = currentMonth - 1;
-            const [, hireMonthStr, hireDayStr] = hireDateCurrentYear.split('-');
-            const hireMonth = Number(hireMonthStr);
-            const hireDay = Number(hireDayStr);
-            if (hireMonth > cutoffMonth) return 0;
-            const firstMonth = hireDay > 15 ? hireMonth + 1 : hireMonth;
-            if (firstMonth > cutoffMonth) return 0;
-            const months = cutoffMonth - firstMonth + 1;
-            // toFixed(2), not (1): the 45-day track's 3.75/month rate needs two
-            // decimal places (3.75, 7.5, 11.25, ...) — rounding to one decimal
-            // silently mangles 3.75 into 3.8.
-            return +(months * monthlyRate).toFixed(2);
-        }
-    }
-    return +(getAccruedMonths(targetYear, now) * monthlyRate).toFixed(2);
+    return `مضاف حتى ${getYearEndDateStr(now)}`;
 }

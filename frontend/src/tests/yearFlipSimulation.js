@@ -1,11 +1,16 @@
 // =====================================================================
 //  runYearFlipSimulation()
 //  -----------------------
-//  Verifies the accrual engine's behavior across the 2026 -> 2027
-//  financial year flip, using REAL production code (libyaTime.js /
-//  leaveCalc.js) with a mocked `now` — not a reimplementation of the
-//  math, so a real bug in the engine cannot hide behind a parallel
-//  "test copy" of the same formula.
+//  Verifies the manual-allocation engine's behavior across the
+//  2026 -> 2027 financial year flip, using REAL production code
+//  (libyaTime.js / leaveCalc.js) with a mocked `now` — not a
+//  reimplementation of the math, so a real bug in the engine cannot hide
+//  behind a parallel "test copy" of the same formula.
+//
+//  The invariant under test since the move off monthly accrual: the year's
+//  days are granted ONCE, in full, when the year is opened — the displayed
+//  figure must therefore be identical on 1 January and on 31 December, and
+//  the "مضاف حتى" label must read that year's own end date (31/12).
 //
 //  Run from Node (no browser/session needed — pure date/math logic):
 //    node src/tests/yearFlipSimulation.js
@@ -14,7 +19,7 @@
 //    import('/src/tests/yearFlipSimulation.js').then(m => m.runYearFlipSimulation())
 // =====================================================================
 import { pathToFileURL } from 'node:url';
-import { getAccruedDays, getAccrualLabel, getLastDayPrevMonthStr } from '../utils/libyaTime.js';
+import { getAccrualLabel, getYearEndDateStr } from '../utils/libyaTime.js';
 import { computeYearlyLedger } from '../utils/leaveCalc.js';
 
 let pass = 0;
@@ -49,49 +54,70 @@ export function runYearFlipSimulation() {
         years_data: {
             2025: { added: 30, deducted: 20 }, // closing 2025 = 12+30-20 = 22
             2026: { added: 30, deducted: 8 },  // closing 2026 = 22+30-8  = 44
+            // Granted in full by add_year('2027') the moment that year was
+            // opened — the stored row the ledger now reads verbatim.
+            2027: { added: 30, deducted: 0 },
         },
     };
-    const overAgeEmployee = { ...employee, id: 2, over_45: true };
+    const overAgeEmployee = {
+        ...employee, id: 2, over_45: true,
+        years_data: { ...employee.years_data, 2027: { added: 45, deducted: 0 } },
+    };
     const years = ['2025', '2026', '2027'];
 
     // -------------------------------------------------------------
-    // Rule 2: Jan 15, 2027 — zero completed months of 2027.
+    // Rule 2: Jan 15, 2027 — the whole year is already granted.
     // -------------------------------------------------------------
     console.log('-- Rule 2: 2027-01-15 --');
     const jan15 = libyaInstant(2027, 1, 15);
 
-    assert(getAccruedDays(2027, 2.5, null, jan15) === 0, '30-day track: 0 days accrued on Jan 15');
-    assert(getAccruedDays(2027, 3.75, null, jan15) === 0, '45-day track: 0 days accrued on Jan 15');
     assert(
-        getAccrualLabel(jan15) === 'مضاف حتى 31/12/2026',
-        `header reads "مضاف حتى 31/12/2026" (got "${getAccrualLabel(jan15)}")`
+        getAccrualLabel(jan15) === 'مضاف حتى 31/12/2027',
+        `header reads "مضاف حتى 31/12/2027" (got "${getAccrualLabel(jan15)}")`
     );
-    assert(getLastDayPrevMonthStr(jan15) === '31/12/2026', 'last-closed-month string is 31/12/2026');
+    assert(getYearEndDateStr(jan15) === '31/12/2027', 'year-end string flipped to 31/12/2027 on Jan 15');
 
-    const ledgerJan15 = computeYearlyLedger(employee, years, 2027, 2.5, jan15);
+    const ledgerJan15 = computeYearlyLedger(employee, years, 2027, jan15);
     const row2027Jan15 = ledgerJan15.find((r) => r.year === '2027');
-    assert(row2027Jan15.added === 0, 'ledger: 2027 "added" column strictly renders 0 on Jan 15');
+    assert(row2027Jan15.added === 30, 'ledger: the full 30 days show on Jan 15, not a monthly fraction');
     assert(row2027Jan15.opening === 44, '2027 opening (44) === 2026 closing, carried forward unchanged');
 
     // -------------------------------------------------------------
-    // Rule 3: Feb 1, 2027 — one completed month (January).
+    // Rule 3: Feb 1, 2027 — a month has closed and NOTHING moves.
+    // This is the core manual-allocation invariant: no monthly drip.
     // -------------------------------------------------------------
     console.log('\n-- Rule 3: 2027-02-01 --');
     const feb1 = libyaInstant(2027, 2, 1);
 
-    assert(getAccruedDays(2027, 2.5, null, feb1) === 2.5, '30-day track: 2.5 days accrued on Feb 1');
-    assert(getAccruedDays(2027, 3.75, null, feb1) === 3.75, '45-day track: 3.75 days accrued on Feb 1');
     assert(
-        getAccrualLabel(feb1) === 'مضاف حتى 31/01/2027',
-        `header reads "مضاف حتى 31/01/2027" (got "${getAccrualLabel(feb1)}")`
+        getAccrualLabel(feb1) === 'مضاف حتى 31/12/2027',
+        `header still reads "مضاف حتى 31/12/2027" after a month closes (got "${getAccrualLabel(feb1)}")`
     );
 
-    const ledgerFeb1 = computeYearlyLedger(employee, years, 2027, 2.5, feb1);
+    const ledgerFeb1 = computeYearlyLedger(employee, years, 2027, feb1);
     const row2027Feb1 = ledgerFeb1.find((r) => r.year === '2027');
-    assert(row2027Feb1.added === 2.5, 'ledger: 2027 "added" dynamically updates to 2.5 on Feb 1');
+    assert(row2027Feb1.added === 30, 'ledger: 2027 "added" is still 30 on Feb 1 — no monthly accrual');
+    assert(row2027Feb1.added === row2027Jan15.added, 'the grant is identical on Jan 15 and on Feb 1');
 
-    const ledgerFeb1Over45 = computeYearlyLedger(overAgeEmployee, years, 2027, 3.75, feb1);
-    assert(ledgerFeb1Over45.find((r) => r.year === '2027').added === 3.75, '45-day track ledger picks up 3.75 on Feb 1');
+    const ledgerFeb1Over45 = computeYearlyLedger(overAgeEmployee, years, 2027, feb1);
+    assert(ledgerFeb1Over45.find((r) => r.year === '2027').added === 45, '45-day track shows its full 45 days');
+
+    // -------------------------------------------------------------
+    // Rule 3b: the label follows the calendar year, and only the year.
+    // -------------------------------------------------------------
+    console.log('\n-- Rule 3b: the "مضاف حتى" label across the flip --');
+    assert(
+        getAccrualLabel(libyaInstant(2026, 12, 31)) === 'مضاف حتى 31/12/2026',
+        'Dec 31, 2026 still reads "مضاف حتى 31/12/2026"'
+    );
+    assert(
+        getAccrualLabel(libyaInstant(2027, 1, 1)) === 'مضاف حتى 31/12/2027',
+        'Jan 1, 2027 rolls the label over to "مضاف حتى 31/12/2027" on its own'
+    );
+    assert(
+        getAccrualLabel(libyaInstant(2027, 7, 31)) === 'مضاف حتى 31/12/2027',
+        'mid-year (Jul 31) the label does NOT drift back to the last closed month'
+    );
 
     // -------------------------------------------------------------
     // Rule 4: 2026 (and 2025) stay immutable once 2027 is active.
@@ -122,7 +148,7 @@ export function runYearFlipSimulation() {
     for (const [y, m, d] of sweepDays) {
         try {
             const now = libyaInstant(y, m, d);
-            const ledger = computeYearlyLedger(employee, years, 2027, 2.5, now);
+            const ledger = computeYearlyLedger(employee, years, 2027, now);
             const negative = ledger.some((r) => r.closing < 0 || r.opening < 0 || r.added < 0 || r.deducted < 0);
             if (negative) {
                 sweepOk = false;

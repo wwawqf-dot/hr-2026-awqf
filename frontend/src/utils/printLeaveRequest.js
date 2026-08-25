@@ -1,5 +1,5 @@
 import { daysToArabicWords, numberToArabicWords } from './arabicNumberWords.js';
-import { getLastDayPrevMonthStr, getLibyaDisplayDate } from './libyaTime.js';
+import { getYearEndDateStr, getLibyaDisplayDate } from './libyaTime.js';
 
 // The official "نموذج إجازة سنوية" form: an A4 SVG (595.2 × 841.92 pt) holding
 // the printed form as a background image plus 26 `{{token}}` text placeholders.
@@ -217,9 +217,11 @@ export function buildLeaveRequestValues(employee, deduction, entitledBeforeDays)
 
     const start = splitIsoDate(deduction.start);
     const end = splitIsoDate(deduction.end);
-    // "إلى غاية" — the accrual cut-off, i.e. the last day of the month that has
-    // just closed, in Libya's timezone. Same helper the balance labels use.
-    const [cutoffDay, cutoffMonth, cutoffYear] = getLastDayPrevMonthStr().split('/');
+    // "إلى غاية" — the date the printed entitlement runs to. The year's days
+    // are granted in full at the start of the year, so that is the year's own
+    // end date (31/12) in Libya's timezone, not a running month-end cut-off.
+    // Same helper the "مضاف حتى ..." balance labels use.
+    const [cutoffDay, cutoffMonth, cutoffYear] = getYearEndDateStr().split('/');
 
     return {
         jobNumber: employee.job_number || '',
@@ -238,9 +240,9 @@ export function buildLeaveRequestValues(employee, deduction, entitledBeforeDays)
         remainingNum: String(remaining),
         remainingWords: numberToArabicWords(remaining),
         // "مدة الإجازة المطلوبة" is dated by the leave's own END date as
-        // entered in section 1 of the form — it does not follow the month-end
-        // accrual cycle. A dateless deduction has no end date, so it falls
-        // back to the cut-off rather than printing three empty blanks.
+        // entered in section 1 of the form — it is not the entitlement's own
+        // cut-off. A dateless deduction has no end date, so it falls back to
+        // the cut-off rather than printing three empty blanks.
         requestedDay: end.day || cutoffDay,
         requestedMonth: end.month || cutoffMonth,
         requestedYear: end.year || cutoffYear,

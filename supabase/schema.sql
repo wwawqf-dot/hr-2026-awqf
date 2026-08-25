@@ -184,6 +184,58 @@ $$;
 
 -- Serializes one employee to exactly the shape the frontend already
 -- expects (mirrors the old assembleEmployee()).
+-- The single source of "how many days does this employee get for this
+-- year". Manual allocation: the full annual figure, granted up front and
+-- stored, prorated only across an employee's own hire year.
+create or replace function public.year_allocation(
+    p_year                   text,
+    p_over_45                boolean default false,
+    p_hire_date_current_year date    default null,
+    p_default_days           numeric default 30
+) returns numeric
+language plpgsql
+stable
+as $$
+declare
+    v_annual numeric;
+    v_month  int;
+    v_day    int;
+    v_first  int;
+begin
+    if p_year is null or p_year !~ '^\d{4}$' then return 0; end if;
+
+    -- The 45-day track is fixed by regulation; everyone else gets the
+    -- allocation configured for that specific year (30 unless changed).
+    v_annual := case when coalesce(p_over_45, false)
+                     then 45
+                     else greatest(0, coalesce(p_default_days, 30)) end;
+
+    -- Not this employee's hire year (or no hire date recorded at all):
+    -- the full year is granted.
+    if p_hire_date_current_year is null
+       or extract(year from p_hire_date_current_year)::int <> p_year::int
+    then
+        return round(v_annual, 2);
+    end if;
+
+    -- Hire year: granted pro rata over the months the employee will
+    -- actually be in post, counting from their first entitled month
+    -- through December. Joining after the 15th starts the entitlement
+    -- the following month.
+    v_month := extract(month from p_hire_date_current_year)::int;
+    v_day   := extract(day   from p_hire_date_current_year)::int;
+    v_first := case when v_day > 15 then v_month + 1 else v_month end;
+    if v_first > 12 then return 0; end if;
+
+    -- round(...,2), not (...,1): the 45-day track's monthly twelfth is
+    -- 3.75, and one decimal place would mangle it into 3.8.
+    return round((13 - v_first) * (v_annual / 12.0), 2);
+end;
+$$;
+
+comment on function public.year_allocation(text, boolean, date, numeric) is
+    'Days granted to an employee for one financial year under manual allocation: the full annual figure, prorated only across the employee''s own hire year.';
+
 create or replace function public.get_employee_json(p_id bigint)
 returns jsonb
 language sql
@@ -439,7 +491,7 @@ declare
     v_recon_note text;
     v_over45 boolean; v_initial numeric;
     v_has_remaining boolean; v_remaining numeric;
-    v_years text[]; v_current text; v_year text;
+    v_years text[]; v_current text; v_year text; v_year_default numeric;
     v_added numeric; v_current_added numeric; v_available numeric; v_consumed numeric;
     v_new_id bigint;
 begin
@@ -482,11 +534,19 @@ begin
         v_hire, v_hire_current_year, now()
     ) returning id into v_new_id;
 
-    v_current_added := case when v_over45 then 45 else 30 end;
+    v_current_added := 0;
     if v_years is not null then
         foreach v_year in array v_years loop
+            -- An explicit years_data figure (a restore, or a manual
+            -- correction) always wins; otherwise the year is granted in
+            -- full, prorated only if this is the employee's own hire year.
             v_added := nullif(p_payload->'years_data'->v_year->>'added', '')::numeric;
-            if v_added is null then v_added := case when v_over45 then 45 else 30 end; end if;
+            if v_added is null then
+                select coalesce(default_days, 30) into v_year_default
+                    from public.years where year = v_year;
+                v_added := public.year_allocation(
+                    v_year, v_over45, v_hire_current_year, v_year_default);
+            end if;
             insert into public.employee_years (employee_id, year, added, deducted)
             values (v_new_id, v_year, v_added, 0)
             on conflict (employee_id, year) do update set added = excluded.added;
@@ -524,6 +584,8 @@ declare
     v_recon_note text;
     v_initial numeric; v_has_remaining boolean; v_remaining numeric;
     v_years text[]; v_current text; v_year text; v_added numeric;
+    v_realloc_year text; v_year_default numeric;
+    v_old_added numeric; v_new_added numeric;
     v_net numeric; v_diff numeric; v_recon_days numeric := 0;
     yd_key text; yd_val jsonb;
 begin
@@ -561,6 +623,54 @@ begin
         hire_date = v_hire,
         hire_date_current_year = v_hire_current_year
     where id = p_id;
+
+    -- Manual allocation means the grant is a STORED number, so the two
+    -- inputs it derives from have to write it back when they change --
+    -- otherwise ticking "فوق 45" or correcting a hire date would leave the
+    -- employee on their old entitlement forever. `emp` still holds the
+    -- pre-update row, which is what makes the comparison possible.
+    --
+    -- Only the newest ACTIVE year is ever rewritten. Closed years stay
+    -- frozen exactly as they were, and an employee whose over_45 / hire
+    -- date did not change is never silently reset -- so an imported or
+    -- hand-corrected figure survives an unrelated edit such as fixing a
+    -- misspelt name.
+    if v_hire_current_year is distinct from emp.hire_date_current_year
+       or coalesce((p_payload->>'over_45')::boolean, false) is distinct from emp.over_45
+    then
+        select max(year) into v_realloc_year
+            from public.years where coalesce(is_archived, false) = false;
+        -- coalesce(): `null ? key` is NULL, not false, and a NULL here
+        -- would silently skip the whole branch for every payload that
+        -- carries no years_data at all -- which is the normal edit.
+        if v_realloc_year is not null
+           and not (coalesce(p_payload->'years_data', '{}'::jsonb) ? v_realloc_year)
+        then
+            select coalesce(default_days, 30) into v_year_default
+                from public.years where year = v_realloc_year;
+            v_new_added := public.year_allocation(
+                v_realloc_year,
+                coalesce((p_payload->>'over_45')::boolean, false),
+                v_hire_current_year,
+                v_year_default);
+            select added into v_old_added from public.employee_years
+                where employee_id = p_id and year = v_realloc_year;
+            update public.employee_years set added = v_new_added
+                where employee_id = p_id and year = v_realloc_year;
+
+            -- Cutting a grant below leave the employee has already taken
+            -- and had approved would store a debt, not a balance. Refuse
+            -- the edit instead. Unpaid leave is exempt: its current-year
+            -- grant is 0 by design and its balance may legitimately sit
+            -- below zero.
+            if v_new_added < coalesce(v_old_added, 0)
+               and not coalesce((p_payload->>'is_unpaid_leave')::boolean, false)
+               and public.employee_net_balance(p_id) < 0
+            then
+                raise exception 'لا يمكن حفظ التعديل: الرصيد المستحق للموظف (% يوم) يصبح أقل من الإجازات المخصومة له فعلياً. يرجى حذف الخصومات الزائدة أولاً ثم إعادة التعديل.', v_new_added;
+            end if;
+        end if;
+    end if;
 
     if p_payload ? 'years_data' then
         for yd_key, yd_val in select key, value from jsonb_each(p_payload->'years_data') loop
@@ -860,7 +970,9 @@ begin
 
         if v_years is not null then
             insert into public.employee_years (employee_id, year, added, deducted)
-            select v_id, y, 30, 0 from unnest(v_years) as y
+            select v_id, y.year,
+                   public.year_allocation(y.year, false, null, coalesce(y.default_days, 30)), 0
+              from public.years y where y.year = any(v_years)
             on conflict (employee_id, year) do nothing;
         end if;
 
@@ -1756,65 +1868,8 @@ alter table public.activity_logs
 
 
 -- ---------------------------------------------------------------------
--- 1. (6) ACCRUAL-AWARE BALANCE — the server-side guard, in SQL
+-- 1. ALLOCATION-AWARE BALANCE — the server-side guard, in SQL
 -- ---------------------------------------------------------------------
--- Faithful port of the frontend's getAccruedDays() (libyaTime.js) so the
--- database enforces exactly what the UI displays. Previously the RPC
--- compared against employee_years.added (the FULL annual 30/45), while
--- the UI compared against the days accrued so far — meaning a direct RPC
--- call could spend months that had not been earned yet.
-create or replace function public.accrued_days(
-    p_year                  text,
-    p_over_45               boolean default false,
-    p_hire_date_current_year date   default null,
-    p_now                   timestamptz default now()
-) returns numeric
-language plpgsql
-stable
-as $$
-declare
-    v_rate       numeric := case when p_over_45 then 3.75 else 2.5 end;
-    v_today      date    := (p_now at time zone 'Africa/Tripoli')::date;
-    v_cur_year   int     := extract(year  from v_today)::int;
-    v_cur_month  int     := extract(month from v_today)::int;
-    v_target     int;
-    v_cutoff     int;
-    v_hire_month int;
-    v_hire_day   int;
-    v_first      int;
-    v_months     int;
-begin
-    if p_year is null or p_year !~ '^\d{4}$' then return 0; end if;
-    v_target := p_year::int;
-
-    -- 15th-day hire rule, applied only while the hire year IS the year
-    -- being computed; after a rollover the employee accrues normally.
-    if p_hire_date_current_year is not null
-       and v_target = v_cur_year
-       and extract(year from p_hire_date_current_year)::int = v_target
-    then
-        v_cutoff     := v_cur_month - 1;   -- the running month never counts
-        v_hire_month := extract(month from p_hire_date_current_year)::int;
-        v_hire_day   := extract(day   from p_hire_date_current_year)::int;
-        if v_hire_month > v_cutoff then return 0; end if;
-        v_first := case when v_hire_day > 15 then v_hire_month + 1 else v_hire_month end;
-        if v_first > v_cutoff then return 0; end if;
-        v_months := v_cutoff - v_first + 1;
-        return round(v_months * v_rate, 2);
-    end if;
-
-    return round(
-        case
-            when v_target < v_cur_year then 12
-            when v_target > v_cur_year then 0
-            else greatest(0, v_cur_month - 1)
-        end * v_rate, 2);
-end;
-$$;
-
--- Mirror of computeNetBalance() in DeductionModal.jsx: past years read
--- their stored added/deducted verbatim; the CURRENT calendar year counts
--- only what has actually accrued.
 create or replace function public.employee_net_balance(p_employee_id bigint)
 returns numeric
 language plpgsql
@@ -1823,44 +1878,23 @@ security definer
 set search_path = public
 as $$
 declare
-    emp          public.employees%rowtype;
-    v_cur_year   text;
-    v_balance    numeric;
-    v_has_current boolean := false;
-    r            record;
+    emp        public.employees%rowtype;
+    v_cur_year text;
+    v_balance  numeric;
 begin
     select * into emp from public.employees where id = p_employee_id;
     if not found then return 0; end if;
 
     v_cur_year := to_char((now() at time zone 'Africa/Tripoli')::date, 'YYYY');
-    v_balance  := coalesce(emp.initial_carried_forward, 0);
 
-    for r in select year,
-                    coalesce(added, 0)    as added,
-                    coalesce(deducted, 0) as deducted
-               from public.employee_years
-              where employee_id = p_employee_id
-    loop
-        if r.year = v_cur_year then
-            v_has_current := true;
-            -- Unpaid leave freezes the current year's accrual at 0 but
-            -- keeps history intact.
-            if emp.is_unpaid_leave then
-                v_balance := v_balance - r.deducted;
-            else
-                v_balance := v_balance
-                           + public.accrued_days(v_cur_year, emp.over_45, emp.hire_date_current_year)
-                           - r.deducted;
-            end if;
-        else
-            v_balance := v_balance + r.added - r.deducted;
-        end if;
-    end loop;
-
-    if not v_has_current and not emp.is_unpaid_leave then
-        v_balance := v_balance
-                   + public.accrued_days(v_cur_year, emp.over_45, emp.hire_date_current_year);
-    end if;
+    select coalesce(emp.initial_carried_forward, 0)
+         + coalesce(sum(
+               case when ey.year = v_cur_year and emp.is_unpaid_leave
+                    then 0 else coalesce(ey.added, 0) end
+               - coalesce(ey.deducted, 0)), 0)
+      into v_balance
+      from public.employee_years ey
+     where ey.employee_id = p_employee_id;
 
     return round(v_balance, 2);
 end;
@@ -1888,7 +1922,8 @@ begin
     -- neither invents nor withholds entitlement.
     insert into public.employee_years (employee_id, year, added, deducted)
     select distinct d.employee_id, d.year,
-           case when e.over_45 then 45 else coalesce(y.default_days, 30) end, 0
+           public.year_allocation(d.year, e.over_45, e.hire_date_current_year,
+                                  coalesce(y.default_days, 30)), 0
       from public.deductions d
       join public.employees e on e.id = d.employee_id
       join public.years     y on y.year = d.year
@@ -2057,14 +2092,15 @@ begin
         raise exception 'يرجى تحديد تاريخ البداية والنهاية أو عدد أيام الخصم';
     end if;
 
-    -- (6) Insufficient-balance protection, now measured against the days
-    -- ACTUALLY ACCRUED so far — identical to what the UI shows — instead
-    -- of the full annual allocation stored in employee_years.added.
+    -- Insufficient-balance protection, measured against exactly what the
+    -- UI shows: the granted allocation minus what has been spent. Under
+    -- manual allocation the stored grant IS the entitlement, so there is
+    -- no longer a gap between "allocated" and "earned so far" to police.
     -- Bypassed for unpaid leave employees (their balance is 0 by design).
     if not emp.is_unpaid_leave then
         v_net := public.employee_net_balance(emp.id);
         if v_days > v_net then
-            raise exception 'فشلت العملية: رصيد الموظف الحالي غير كافٍ لتغطية عدد أيام الخصم المطلوبة. الرصيد المستحق حتى اليوم: % يوم.', v_net;
+            raise exception 'فشلت العملية: رصيد الموظف الحالي غير كافٍ لتغطية عدد أيام الخصم المطلوبة. الرصيد المتاح: % يوم.', v_net;
         end if;
     end if;
 
@@ -2075,7 +2111,8 @@ begin
 
     insert into public.employee_years (employee_id, year, added, deducted)
     values (emp.id, v_year,
-            case when emp.over_45 then 45 else coalesce(v_year_default, 30) end, 0)
+            public.year_allocation(v_year, emp.over_45, emp.hire_date_current_year,
+                                   coalesce(v_year_default, 30)), 0)
     on conflict (employee_id, year) do nothing;
 
     update public.employee_years set deducted = deducted + v_days
@@ -2085,7 +2122,7 @@ begin
     values (emp.id, v_year, v_start, v_end, v_days, v_note, v_username, now());
 
     -- Post-update sanity check (defence in depth against race / logic
-    -- bugs), on the same accrual basis as the pre-check above.
+    -- bugs), on the same basis as the pre-check above.
     if not emp.is_unpaid_leave then
         if public.employee_net_balance(emp.id) < 0 then
             raise exception 'خطأ داخلي: الرصيد أصبح سالباً بعد الخصم — تم إلغاء العملية';
@@ -2214,8 +2251,13 @@ begin
         insert into public.years (year, default_days) values (v_year, v_default);
     end if;
 
+    -- The whole year is granted here, once, and then never recomputed:
+    -- this insert IS the "manual addition at the start of the year".
+    -- year_allocation() prorates only an employee whose own hire date
+    -- falls inside this very year; everyone else gets the full figure.
     insert into public.employee_years (employee_id, year, added, deducted)
-    select id, v_year, case when over_45 then 45 else v_default end, 0
+    select id, v_year,
+           public.year_allocation(v_year, over_45, hire_date_current_year, v_default), 0
         from public.employees where is_archived = false
     on conflict (employee_id, year) do nothing;
 
@@ -2835,9 +2877,9 @@ grant execute on function public.create_user(text, text, text, text) to authenti
 -- ---------------------------------------------------------------------
 -- 13. GRANTS for the new functions
 -- ---------------------------------------------------------------------
--- employee_net_balance/accrued_days are read-only helpers; the client may
+-- employee_net_balance/year_allocation are read-only helpers; the client may
 -- call them to show the same number the guard uses.
-grant execute on function public.accrued_days(text, boolean, date, timestamptz) to authenticated;
+grant execute on function public.year_allocation(text, boolean, date, numeric)   to authenticated;
 grant execute on function public.employee_net_balance(bigint)                   to authenticated;
 grant execute on function public.reconcile_all_counters()                       to authenticated;
 

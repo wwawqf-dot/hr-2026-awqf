@@ -22,7 +22,7 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
     // issue date shifted, occasionally to the wrong day near midnight).
     const formattedDate = getLibyaDisplayDate(new Date());
     const carriedLabel = `المرحل حتى ${formatDateDisplay(openingBalanceDate)}`;
-    const accrualLabel = getAccrualLabel();
+    const grantedLabel = getAccrualLabel();
     const realLibyaYear = getLibyaYear();
 
     const fixedColumnCount = 4;
@@ -94,7 +94,7 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
 
     if (isAllYears) {
         years.forEach((year) => {
-            const addedLabel = year === realLibyaYear ? accrualLabel : `مضاف ${year}`;
+            const addedLabel = year === realLibyaYear ? grantedLabel : `مضاف ${year}`;
             html += `
                 <th style="white-space: nowrap; line-height: 1.3; padding: 8px 7px;">
                     (الصافي التراكمي للسنوات السابقة)<br>
@@ -106,7 +106,7 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
             `;
         });
     } else {
-        const addedLabel = selectedYear === realLibyaYear ? accrualLabel : `مضاف ${selectedYear}`;
+        const addedLabel = selectedYear === realLibyaYear ? grantedLabel : `مضاف ${selectedYear}`;
         html += `
             <th>${carriedLabel}</th>
             <th>${addedLabel}</th>
@@ -130,8 +130,7 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
 
     printableEmployees.forEach((emp, index) => {
         const isUnpaid = emp.is_unpaid_leave === true;
-        const monthlyRate = emp.over_45 ? 3.75 : 2.5;
-        const ledger = computeYearlyLedger(emp, years, realLibyaYear, monthlyRate);
+        const ledger = computeYearlyLedger(emp, years, realLibyaYear);
 
         html += `
             <tr>
