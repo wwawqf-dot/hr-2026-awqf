@@ -26,12 +26,26 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.105.0
 
+      # SUPABASE_ACCESS_TOKEN authenticates the CLI against the Supabase
+      # API — it is what `link` needs. It is NOT a database credential, so
+      # `db push`, which opens a real Postgres connection, additionally
+      # needs SUPABASE_DB_PASSWORD. Without it the CLI falls back to a
+      # temporary login role and the connection is rejected outright
+      # (FATAL: password authentication failed for user
+      # "cli_login_postgres"), which is what this step failed on.
       - name: Apply database migrations
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
+          # Fail with a sentence someone can act on, rather than with a
+          # raw Postgres auth error thirty lines further down.
+          if [ -z "$SUPABASE_DB_PASSWORD" ]; then
+            echo "::error::Repository secret SUPABASE_DB_PASSWORD is not set. Add it under Settings > Secrets and variables > Actions; the value is the project's database password (Supabase Dashboard > Project Settings > Database)."
+            exit 1
+          fi
           supabase link --project-ref uzmhsesmszngkanjsjgy
           supabase db push
 
