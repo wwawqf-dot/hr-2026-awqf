@@ -1956,13 +1956,114 @@ end;
 $$;
 
 -- Admin-facing wrapper: audit the whole database and repair any drift.
+-- Repair engine for the stored grant itself. employee_years.added is
+-- written once, when the year is opened or the employee is created; the
+-- employee's track (over_45) and hire date can change afterwards, and an
+-- employee restored from the archive may have no row for the year at all.
+-- This re-derives both from what the employee IS today, for the current
+-- financial year and any year opened ahead of it. Closed and archived
+-- years are never touched.
+create or replace function public.reconcile_allocations(p_employee_ids bigint[] default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_cur_year text := to_char((now() at time zone 'Africa/Tripoli')::date, 'YYYY');
+    v_created  int  := 0;
+    v_fixed    int  := 0;
+    v_blocked  jsonb;
+begin
+    -- (2) Grant the year to an active employee who has no row for it —
+    -- the archived-then-restored case add_year() could never have seen.
+    insert into public.employee_years (employee_id, year, added, deducted)
+    select e.id, y.year,
+           public.year_allocation(y.year, e.over_45, e.hire_date_current_year,
+                                  coalesce(y.default_days, 30)), 0
+      from public.employees e
+      cross join public.years y
+     where e.is_archived = false
+       and coalesce(y.is_archived, false) = false
+       and y.year ~ '^\d{4}$'
+       and y.year >= v_cur_year
+       and (p_employee_ids is null or e.id = any(p_employee_ids))
+       and not exists (select 1 from public.employee_years ey
+                        where ey.employee_id = e.id and ey.year = y.year)
+    on conflict (employee_id, year) do nothing;
+    get diagnostics v_created = row_count;
+
+    -- (1) Re-derive the stored grant from what the employee IS today:
+    -- their track, their hire date, and the year's configured allocation.
+    with target as (
+        select ey.id,
+               ey.added    as old_added,
+               ey.deducted as deducted,
+               public.year_allocation(ey.year, e.over_45, e.hire_date_current_year,
+                                      coalesce(y.default_days, 30)) as new_added
+          from public.employee_years ey
+          join public.employees e on e.id = ey.employee_id
+          join public.years     y on y.year = ey.year
+         where e.is_archived = false
+           and coalesce(y.is_archived, false) = false
+           and ey.year ~ '^\d{4}$'
+           and ey.year >= v_cur_year
+           and (p_employee_ids is null or ey.employee_id = any(p_employee_ids))
+    ),
+    applied as (
+        update public.employee_years ey
+           set added = t.new_added
+          from target t
+         where ey.id = t.id
+           and t.new_added is distinct from t.old_added
+           -- A correction that lands BELOW the days already taken would
+           -- turn an approved leave into a debt. Those rows are left
+           -- alone and reported instead, for a human to settle.
+           and t.new_added >= t.deducted
+        returning 1
+    )
+    select count(*) into v_fixed from applied;
+
+    -- Anything still mismatched after that pass is, by construction, a
+    -- row the guard above refused. Name it so the admin can act on it.
+    select coalesce(jsonb_agg(jsonb_build_object(
+               'employee',   e.name,
+               'job_number', coalesce(e.job_number, ''),
+               'year',       ey.year,
+               'stored',     ey.added,
+               'correct',    v.new_added,
+               'deducted',   ey.deducted) order by e.name), '[]'::jsonb)
+      into v_blocked
+      from public.employee_years ey
+      join public.employees e on e.id = ey.employee_id
+      join public.years     y on y.year = ey.year
+      cross join lateral (
+           select public.year_allocation(ey.year, e.over_45, e.hire_date_current_year,
+                                         coalesce(y.default_days, 30)) as new_added) v
+     where e.is_archived = false
+       and coalesce(y.is_archived, false) = false
+       and ey.year ~ '^\d{4}$'
+       and ey.year >= v_cur_year
+       and (p_employee_ids is null or ey.employee_id = any(p_employee_ids))
+       and v.new_added is distinct from ey.added;
+
+    return jsonb_build_object('created', v_created,
+                              'fixed',   v_fixed,
+                              'blocked', v_blocked);
+end;
+$$;
+
+
 create or replace function public.reconcile_all_counters()
 returns jsonb
 language plpgsql
 security definer
 set search_path = public
 as $$
-declare v_role text; v_username text; v_fixed int;
+declare
+    v_role text; v_username text;
+    v_counters int;
+    v_alloc jsonb;
 begin
     select role, coalesce(username, '') into v_role, v_username
         from public.profiles where id = auth.uid();
@@ -1970,11 +2071,21 @@ begin
         raise exception 'هذه العملية مقصورة على المدير';
     end if;
 
-    v_fixed := public.reconcile_counters(null);
+    v_counters := public.reconcile_counters(null);
+    v_alloc    := public.reconcile_allocations(null);
 
-    perform public.log_action(v_role, v_username, 'مطابقة عدّادات الخصم',
-        format('تمت مطابقة العدّادات مع سجل الخصومات — عدد الصفوف المصحّحة: %s', v_fixed));
-    return jsonb_build_object('fixed', v_fixed);
+    perform public.log_action(v_role, v_username, 'مطابقة الأرصدة والعدّادات',
+        format('عدّادات خصم صُحّحت: %s، أرصدة سنوية صُحّحت: %s، صفوف أُنشئت: %s، صفوف تعذّر تصحيحها: %s',
+               v_counters,
+               v_alloc->>'fixed',
+               v_alloc->>'created',
+               jsonb_array_length(v_alloc->'blocked')));
+
+    return jsonb_build_object(
+        'fixed',       v_counters,                          -- kept: existing callers read this
+        'allocFixed',  (v_alloc->>'fixed')::int,
+        'allocAdded',  (v_alloc->>'created')::int,
+        'blocked',     v_alloc->'blocked');
 end;
 $$;
 
@@ -2888,6 +2999,12 @@ grant execute on function public.reconcile_all_counters()                       
 revoke all on function public.reconcile_counters(bigint[]) from public;
 revoke all on function public.reconcile_counters(bigint[]) from anon;
 revoke all on function public.reconcile_counters(bigint[]) from authenticated;
+
+-- reconcile_allocations() is the matching engine for the grant half of an
+-- employee-year row, and is locked down exactly the same way.
+revoke all on function public.reconcile_allocations(bigint[]) from public;
+revoke all on function public.reconcile_allocations(bigint[]) from anon;
+revoke all on function public.reconcile_allocations(bigint[]) from authenticated;
 
 revoke all on function public.log_activity(text, text)   from public;
 revoke all on function public.log_activity(text, text)   from anon;

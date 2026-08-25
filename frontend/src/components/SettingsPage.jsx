@@ -324,13 +324,37 @@ export default function SettingsPage({ leaveData }) {
         setReconciling(true);
         try {
             const result = await reconcileCounters();
-            const fixed = result?.fixed ?? 0;
-            logActivity('مطابقة عدّادات الخصم', `عدد الصفوف المصحّحة: ${fixed}`).catch(() => {});
+            const fixed = result?.fixed ?? 0;              // deduction counters
+            const allocFixed = result?.allocFixed ?? 0;    // stale yearly grants
+            const allocAdded = result?.allocAdded ?? 0;    // grants that were missing outright
+            const blocked = result?.blocked ?? [];
+            logActivity(
+                'مطابقة الأرصدة والعدّادات',
+                `عدّادات: ${fixed}، أرصدة سنوية: ${allocFixed}، صفوف مضافة: ${allocAdded}، متعذّرة: ${blocked.length}`
+            ).catch(() => {});
+
+            const done = [];
+            if (fixed) done.push(`${fixed} عدّاد خصم`);
+            if (allocFixed) done.push(`${allocFixed} رصيد سنوي`);
+            if (allocAdded) done.push(`${allocAdded} موظف لم يكن له رصيد مسجّل لهذه السنة`);
             setBackupSuccess(
-                fixed === 0
-                    ? 'تمت المطابقة: جميع العدّادات مطابقة تماماً لسجل الخصومات.'
-                    : `تمت المطابقة وتصحيح ${fixed} صفاً كان مخالفاً لسجل الخصومات.`
+                done.length === 0
+                    ? 'تمت المطابقة: جميع الأرصدة والعدّادات سليمة، ولا يوجد ما يحتاج تصحيحاً.'
+                    : `تمت المطابقة وتصحيح: ${done.join('، ')}.`
             );
+
+            // A grant that would land below the days the employee has
+            // already taken is never written silently — it is named here
+            // so a human can settle it.
+            if (blocked.length) {
+                setBackupError(
+                    'تعذّر تصحيح رصيد الموظفين التالين لأن الرصيد الصحيح أقل من الإجازات المخصومة لهم فعلاً، ' +
+                    'ويحتاج الأمر لمراجعة يدوية: ' +
+                    blocked
+                        .map((b) => `${b.employee} (المسجّل ${b.stored} / الصحيح ${b.correct} / المخصوم ${b.deducted})`)
+                        .join('، ')
+                );
+            }
         } catch (err) {
             setBackupError(err.message || 'تعذر تنفيذ المطابقة');
         } finally {
@@ -471,15 +495,15 @@ export default function SettingsPage({ leaveData }) {
                         className="btn btn-outline"
                         onClick={handleReconcile}
                         disabled={reconciling}
-                        title="يتحقق من تطابق عدّادات الخصم مع سجل الخصومات ويصحّح أي فرق"
+                        title="يعيد حساب الرصيد السنوي المضاف وعدّادات الخصم لكل موظف ويصحّح أي فرق"
                     >
                         {reconciling && <LoadingSpinner size={16} color="#10b981" style={{ marginLeft: 8 }} />}
-                        <i className="fas fa-scale-balanced"></i> {reconciling ? 'جاري المطابقة...' : 'مطابقة العدّادات'}
+                        <i className="fas fa-scale-balanced"></i> {reconciling ? 'جاري المطابقة...' : 'مطابقة الأرصدة والعدّادات'}
                     </button>
                 </div>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.9rem' }}>
                     <i className="fas fa-circle-info" style={{ color: '#60a5fa', marginLeft: 6 }}></i>
-                    "مطابقة العدّادات" تعيد حساب أيام الخصم المسجّلة لكل موظف من سجل خصوماته الفعلي، وتصحّح أي فرق نتج عن استيراد نسخة قديمة.
+                    "مطابقة الأرصدة والعدّادات" تصحّح أمرين للسنة المالية الحالية فقط: الرصيد السنوي المضاف لكل موظف (30 يوماً، أو 45 لمن تنطبق عليه الشروط، أو بالتناسب لمن عُيّن خلال السنة) — وهو ما يعالج من غُيّرت صفته بعد فتح السنة أو من استُعيد من الأرشيف بلا رصيد — وأيام الخصم المسجّلة، من سجل خصوماته الفعلي. السنوات المغلقة والمؤرشفة لا تُمسّ.
                 </p>
             </div>
 
