@@ -84,7 +84,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
                                 <td style={{ fontWeight: 600, color: '#ffffff' }}>
                                     <div className="emp-name-row">
                                         {emp.name}{' '}
-                                        {emp.over_45 && <span className="tag-warning">+45 سنة</span>}
+                                        {emp.over_45 && <span className="tag-warning" title="يستحق 45 يوماً سنوياً بدلاً من 30">+45</span>}
                                         {emp.is_frozen && <span className="tag-danger">مُجمّد</span>}
                                         {emp.is_unpaid_leave && <span className="tag-unpaid" title="إجازة بدون مرتب — الرصيد التراكمي محفوظ، استحقاق السنة الحالية مجمّد">إجازة بدون مرتب</span>}
                                     </div>

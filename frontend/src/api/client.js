@@ -335,13 +335,10 @@ export const api = {
             ...result,
         };
     },
-    // Deliberately still a real, irreversible hard delete (the danger-zone
-    // full wipe) — routed through a SECURITY DEFINER RPC now, since a raw
-    // REST DELETE against `employees` no longer has a grant (see the
-    // soft-delete migration): archive_employee/archive_year are the
-    // sanctioned path for routine deletion, and this RPC is the one
-    // remaining, explicit, admin-only exception.
-    deleteAllRecords: () => rpc('wipe_all_employees'),
+    // NOTE: there is deliberately no bulk-wipe call here. The danger-zone
+    // panel that used to drive wipe_all_employees() was removed at the
+    // owner's request; archive_employee/archive_year are the sanctioned
+    // path for deletion, and they are reversible.
 };
 
 export { ApiError };

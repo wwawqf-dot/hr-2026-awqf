@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import PageHeader from './PageHeader';
 import LoadingSpinner from './LoadingSpinner';
 import { TableSkeleton } from './SkeletonLoader';
-import ConfirmDangerModal from './modals/ConfirmDangerModal';
 import { getLibyaDateStr, getLibyaYear } from '../utils/libyaTime';
 import { logActivity } from '../api/client';
 
@@ -49,7 +48,7 @@ function validateBackupPayload(parsed) {
 export default function SettingsPage({ leaveData }) {
     const {
         years, settings, loading, error, addYear, deleteYear, updateSettings,
-        exportBackup, importBackup, deleteAllRecords,
+        exportBackup, importBackup,
         getArchivedEmployees, restoreEmployee, getArchivedYears, restoreYear,
         finalizeYear, listYearArchives, getYearArchive, reconcileCounters,
     } = leaveData;
@@ -65,7 +64,6 @@ export default function SettingsPage({ leaveData }) {
     const [backupSuccess, setBackupSuccess] = useState('');
     const [exporting, setExporting] = useState(false);
     const [importing, setImporting] = useState(false);
-    const [showDangerModal, setShowDangerModal] = useState(false);
     const fileInputRef = useRef(null);
 
     // Trash bin: loaded lazily (only once the admin expands the panel),
@@ -307,12 +305,6 @@ export default function SettingsPage({ leaveData }) {
         } finally {
             setImporting(false);
         }
-    }
-
-    async function handleDeleteAll() {
-        await deleteAllRecords();
-        setBackupError('');
-        setBackupSuccess('تم حذف جميع سجلات الموظفين بنجاح.');
     }
 
     // Audits every employee-year counter against the deduction register it
@@ -664,25 +656,6 @@ export default function SettingsPage({ leaveData }) {
                 )}
             </div>
 
-            <div className="panel" style={{ borderColor: 'rgba(239, 68, 68, 0.35)' }}>
-                <h2 style={{ color: 'var(--danger)' }}><i className="fas fa-skull-crossbones"></i> منطقة الخطر</h2>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '1.25rem' }}>
-                    سيؤدي هذا الإجراء إلى حذف جميع سجلات الموظفين وبياناتهم السنوية وسجل خصوماتهم نهائياً من النظام.
-                    لا يمكن التراجع عن هذا الإجراء. يُنصح بأخذ نسخة تصدير قبل المتابعة.
-                </p>
-                <button className="btn btn-danger-outline" onClick={() => setShowDangerModal(true)}>
-                    <i className="fas fa-trash-alt"></i> حذف كل السجلات
-                </button>
-            </div>
-
-            {showDangerModal && (
-                <ConfirmDangerModal
-                    title="حذف كل السجلات"
-                    message="سيتم حذف جميع سجلات الموظفين، بياناتهم السنوية، وسجل الخصومات بشكل نهائي ولا يمكن التراجع عن هذا الإجراء. لن يتم حذف المستخدمين أو السنوات المالية أو الإعدادات."
-                    onClose={() => setShowDangerModal(false)}
-                    onConfirm={handleDeleteAll}
-                />
-            )}
         </>
     );
 }

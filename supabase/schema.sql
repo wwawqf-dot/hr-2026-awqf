@@ -1069,11 +1069,28 @@ begin
         from public.employees where is_archived = false
     on conflict (employee_id, year) do nothing;
 
+    -- The opening balance of the year being opened is what the employee
+    -- carried OUT of the years that closed before it, so the sum must
+    -- exclude v_year itself. The row for v_year was inserted a few lines
+    -- above carrying this year's full grant; including it here made
+    -- ceiled_cumulative_balance contain that grant, and the ledger then
+    -- added the very same grant a second time on top of the opening it
+    -- had just been handed (computeYearlyLedger takes this value AS the
+    -- opening, then adds the year's `added` to it). Every employee's
+    -- "الصافي التراكمي" therefore read exactly one annual grant too high
+    -- from the moment a financial year was opened.
+    --
+    -- `year < v_year` rather than `year <> v_year`: restoring an archived
+    -- year is allowed to reopen a year OLDER than the newest one, and in
+    -- that case the opening must still be the balance carried out of the
+    -- years before it, not a total that sweeps in the years after it.
     for emp in select e.id, e.initial_carried_forward from public.employees e where e.is_archived = false loop
         select coalesce(emp.initial_carried_forward, 0)
              + coalesce(sum(coalesce(added,0) - coalesce(deducted,0)), 0)
           into v_running
-          from public.employee_years where employee_id = emp.id;
+          from public.employee_years
+         where employee_id = emp.id
+           and year < v_year;
         update public.employees set
             ceiled_cumulative_balance = ceil(v_running),
             carryover_ceiled_at_year = v_year
@@ -2372,11 +2389,28 @@ begin
         from public.employees where is_archived = false
     on conflict (employee_id, year) do nothing;
 
+    -- The opening balance of the year being opened is what the employee
+    -- carried OUT of the years that closed before it, so the sum must
+    -- exclude v_year itself. The row for v_year was inserted a few lines
+    -- above carrying this year's full grant; including it here made
+    -- ceiled_cumulative_balance contain that grant, and the ledger then
+    -- added the very same grant a second time on top of the opening it
+    -- had just been handed (computeYearlyLedger takes this value AS the
+    -- opening, then adds the year's `added` to it). Every employee's
+    -- "الصافي التراكمي" therefore read exactly one annual grant too high
+    -- from the moment a financial year was opened.
+    --
+    -- `year < v_year` rather than `year <> v_year`: restoring an archived
+    -- year is allowed to reopen a year OLDER than the newest one, and in
+    -- that case the opening must still be the balance carried out of the
+    -- years before it, not a total that sweeps in the years after it.
     for emp in select e.id, e.initial_carried_forward from public.employees e where e.is_archived = false loop
         select coalesce(emp.initial_carried_forward, 0)
              + coalesce(sum(coalesce(added,0) - coalesce(deducted,0)), 0)
           into v_running
-          from public.employee_years where employee_id = emp.id;
+          from public.employee_years
+         where employee_id = emp.id
+           and year < v_year;
         update public.employees set
             ceiled_cumulative_balance = ceil(v_running),
             carryover_ceiled_at_year = v_year

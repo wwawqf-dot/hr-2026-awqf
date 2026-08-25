@@ -152,12 +152,6 @@ export function useLeaveData(enabled = true) {
         return data;
     }
 
-    async function deleteAllRecords() {
-        const data = await api.deleteAllRecords();
-        await refresh();
-        return data;
-    }
-
     async function reconcileCounters() {
         const data = await api.reconcileCounters();
         await refresh();
@@ -188,7 +182,6 @@ export function useLeaveData(enabled = true) {
         deleteDeduction,
         exportBackup,
         importBackup,
-        deleteAllRecords,
         reconcileCounters,
     };
 }
