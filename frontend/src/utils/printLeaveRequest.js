@@ -1,5 +1,5 @@
 import { daysToArabicWords, numberToArabicWords } from './arabicNumberWords.js';
-import { getAllocationPeriodEndStr, getLibyaDisplayDate } from './libyaTime.js';
+import { getYearEndDateStr, getLibyaDisplayDate } from './libyaTime.js';
 
 // The official "نموذج إجازة سنوية" form: an A4 SVG (595.2 × 841.92 pt) holding
 // the printed form as a background image plus 26 `{{token}}` text placeholders.
@@ -61,7 +61,7 @@ const FIELDS = {
 
     // مدة الإجازة المطلوبة — its "إلى غاية" is the leave's OWN END date as
     // entered in section 1 of the form (e.g. the end date of the requested
-    // leave), NOT the installment cut-off the rows above use.
+    // leave), NOT the month-end accrual cut-off the rows above use.
     '412.72,665.32': { key: 'requestedNum',   dx: 14.1, size: 10.08 },
     '262.34,658.93': { key: 'requestedWords', dx: 45.5, size: 11.42, maxW: 138 },
     '177.41,658.93': { key: 'requestedDay',   dx: 13.0, size: 11.42 },
@@ -69,8 +69,7 @@ const FIELDS = {
     '81.79,658.93':  { key: 'requestedYear',  dx: 23.2, size: 11.42 },
 
     // الرصيد المتبقي — same dynamic logic as the entitlement row: its
-    // "إلى غاية" tracks the half-year installment cut-off automatically
-    // (30/06 before July, 31/12 after), with no yearly maintenance.
+    // "إلى غاية" tracks the year-end cut-off automatically.
     '428.98,684.39': { key: 'remainingNum',   dx: 14.1, size: 10.08 },
     '269.26,679.51': { key: 'remainingWords', dx: 48.4, size: 11.42, maxW: 150 },
     '184.76,679.56': { key: 'cutoffDay',      dx: 13.0, size: 11.42 },
@@ -218,13 +217,11 @@ export function buildLeaveRequestValues(employee, deduction, entitledBeforeDays)
 
     const start = splitIsoDate(deduction.start);
     const end = splitIsoDate(deduction.end);
-    // "إلى غاية" — the date the printed entitlement runs to. The year is
-    // released in two half-year installments, so this is the end of the
-    // one currently in hand: 30/06 before July, 31/12 after. Printing
-    // 31/12 in March would claim the employee already holds days that
-    // the July installment has not released yet. Same helper the
-    // "مضاف حتى ..." balance labels use.
-    const [cutoffDay, cutoffMonth, cutoffYear] = getAllocationPeriodEndStr().split('/');
+    // "إلى غاية" — the date the printed entitlement runs to. The year's days
+    // are granted in full at the start of the year, so that is the year's own
+    // end date (31/12) in Libya's timezone, not a running month-end cut-off.
+    // Same helper the "مضاف حتى ..." balance labels use.
+    const [cutoffDay, cutoffMonth, cutoffYear] = getYearEndDateStr().split('/');
 
     return {
         jobNumber: employee.job_number || '',

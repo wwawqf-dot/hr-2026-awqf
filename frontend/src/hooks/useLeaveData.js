@@ -31,11 +31,7 @@ export function useLeaveData(enabled = true) {
 
     useEffect(() => {
         if (!enabled) return;
-        // Release whatever installment is due BEFORE the first read, so
-        // the table never paints a stale figure on 1 July and then jumps
-        // on the next reload. A failure here is non-fatal: the balances
-        // already stored still display, and the next load retries.
-        api.ensureAllocations().catch(() => {}).then(refresh);
+        refresh();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [refresh, enabled]);
 

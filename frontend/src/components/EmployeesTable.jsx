@@ -1,6 +1,6 @@
 import { Fragment, useMemo } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
-import { getAllocationPeriodEndStr, getLibyaYear } from '../utils/libyaTime';
+import { getYearEndDateStr, getLibyaYear } from '../utils/libyaTime';
 import { computeYearlyLedger } from '../utils/leaveCalc';
 
 export default function EmployeesTable({ employees, years, onDeduct, onEdit, onDelete }) {
@@ -29,7 +29,7 @@ export default function EmployeesTable({ employees, years, onDeduct, onEdit, onD
     // one sit side by side in the table (e.g. "31/12/2026" vs "31/12/2027").
     // The whole year's days are granted up front, so this is the year's own
     // end date and it rolls over by itself each 1 January.
-    const allocationEndDate = getAllocationPeriodEndStr();
+    const allocationEndDate = getYearEndDateStr();
 
     return (
         <div className="table-container compact-table">

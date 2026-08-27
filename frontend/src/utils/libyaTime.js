@@ -93,24 +93,16 @@ export function getLibyaYear(now = new Date()) {
     return String(getLibyaYearNum(now));
 }
 
-// The last day of the CURRENT financial year, "31/12/yyyy". Kept for
-// callers that genuinely mean the year boundary (year-end reporting,
-// archive labels) rather than the period the current grant covers.
+// The last day of the CURRENT financial year, "31/12/yyyy". This is the
+// date every "مضاف حتى ..." label prints: the allocation is granted in
+// full at the start of the year and therefore covers the year through to
+// its end — it is not a running month-by-month cut-off. It rolls over on
+// its own the moment Tripoli's calendar year does, so the label needs no
+// maintenance at each year end.
 export function getYearEndDateStr(now = new Date()) {
     return `31/12/${getLibyaYearNum(now)}`;
 }
 
-// The end of the installment period the "مضاف" column is currently
-// showing. The entitlement is released in two halves — 1 January and
-// 1 July — so before July the stored figure genuinely covers only
-// through 30 June, and labelling it "حتى 31/12" would overstate it by
-// half a year. Both halves of this roll over on their own with Tripoli's
-// calendar, so the label needs no maintenance at any year end.
-export function getAllocationPeriodEndStr(now = new Date()) {
-    const [year, month] = getLibyaDateStr(now).split('-');
-    return Number(month) >= 7 ? `31/12/${year}` : `30/06/${year}`;
-}
-
 export function getAccrualLabel(now = new Date()) {
-    return `مضاف حتى ${getAllocationPeriodEndStr(now)}`;
+    return `مضاف حتى ${getYearEndDateStr(now)}`;
 }
