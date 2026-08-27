@@ -2033,8 +2033,8 @@ declare
     v_fixed    int  := 0;
     v_blocked  jsonb;
 begin
-    -- (2) Grant the year to an active employee who has no row for it —
-    -- the archived-then-restored case add_year() could never have seen.
+    -- Grant the year to an active employee who has no row for it — the
+    -- archived-then-restored case add_year() could never have seen.
     insert into public.employee_years (employee_id, year, added, deducted)
     select e.id, y.year,
            public.year_allocation(y.year, e.over_45, e.hire_date_current_year,
@@ -2051,14 +2051,13 @@ begin
     on conflict (employee_id, year) do nothing;
     get diagnostics v_created = row_count;
 
-    -- (1) Re-derive the stored grant from what the employee IS today:
-    -- their track, their hire date, and the year's configured allocation.
-    with target as (
-        select ey.id,
-               ey.added    as old_added,
+    with cand as (
+        select ey.id, ey.employee_id, ey.year,
+               ey.added    as stored,
                ey.deducted as deducted,
                public.year_allocation(ey.year, e.over_45, e.hire_date_current_year,
-                                      coalesce(y.default_days, 30)) as new_added
+                                      coalesce(y.default_days, 30)) as owed,
+               e.is_unpaid_leave
           from public.employee_years ey
           join public.employees e on e.id = ey.employee_id
           join public.years     y on y.year = ey.year
@@ -2068,42 +2067,52 @@ begin
            and ey.year >= v_cur_year
            and (p_employee_ids is null or ey.employee_id = any(p_employee_ids))
     ),
+    changed as (
+        select *, case when is_unpaid_leave and year = v_cur_year
+                       then 0 else owed - stored end as delta
+          from cand
+         where owed is distinct from stored
+    ),
+    solvent as (
+        select c.employee_id
+          from changed c
+         group by c.employee_id
+        having public.employee_net_balance(c.employee_id) + sum(c.delta) >= 0
+    ),
     applied as (
         update public.employee_years ey
-           set added = t.new_added
-          from target t
-         where ey.id = t.id
-           and t.new_added is distinct from t.old_added
-           -- A correction that lands BELOW the days already taken would
-           -- turn an approved leave into a debt. Those rows are left
-           -- alone and reported instead, for a human to settle.
-           and t.new_added >= t.deducted
+           set added = c.owed
+          from changed c
+          join solvent s on s.employee_id = c.employee_id
+         where ey.id = c.id
         returning 1
     )
     select count(*) into v_fixed from applied;
 
-    -- Anything still mismatched after that pass is, by construction, a
-    -- row the guard above refused. Name it so the admin can act on it.
+    -- Whatever still mismatches is, by construction, a row the guard
+    -- refused. Report the resulting net so the reason is visible.
     select coalesce(jsonb_agg(jsonb_build_object(
                'employee',   e.name,
                'job_number', coalesce(e.job_number, ''),
                'year',       ey.year,
                'stored',     ey.added,
-               'correct',    v.new_added,
-               'deducted',   ey.deducted) order by e.name), '[]'::jsonb)
+               'correct',    v.owed,
+               'deducted',   ey.deducted,
+               'net',        public.employee_net_balance(e.id) + (v.owed - ey.added)
+           ) order by e.name), '[]'::jsonb)
       into v_blocked
       from public.employee_years ey
       join public.employees e on e.id = ey.employee_id
       join public.years     y on y.year = ey.year
       cross join lateral (
            select public.year_allocation(ey.year, e.over_45, e.hire_date_current_year,
-                                         coalesce(y.default_days, 30)) as new_added) v
+                                         coalesce(y.default_days, 30)) as owed) v
      where e.is_archived = false
        and coalesce(y.is_archived, false) = false
        and ey.year ~ '^\d{4}$'
        and ey.year >= v_cur_year
        and (p_employee_ids is null or ey.employee_id = any(p_employee_ids))
-       and v.new_added is distinct from ey.added;
+       and v.owed is distinct from ey.added;
 
     return jsonb_build_object('created', v_created,
                               'fixed',   v_fixed,
