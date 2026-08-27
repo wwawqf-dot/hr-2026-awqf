@@ -187,22 +187,29 @@ $$;
 -- The single source of "how many days does this employee get for this
 -- year". Manual allocation: the full annual figure, granted up front and
 -- stored, prorated only across an employee's own hire year.
-create or replace function public.year_allocation(
+create or replace function public.allocation_due(
     p_year                   text,
     p_over_45                boolean default false,
     p_hire_date_current_year date    default null,
-    p_default_days           numeric default 30
+    p_default_days           numeric default 30,
+    p_as_of                  date    default null
 ) returns numeric
 language plpgsql
 stable
 as $$
 declare
-    v_annual numeric;
-    v_month  int;
-    v_day    int;
-    v_first  int;
+    v_annual  numeric;
+    v_as_of   date;
+    v_first   int;    -- first month the employee is entitled to, 1..12
+    v_last    int;    -- last month released as of v_as_of, 0..12
+    v_month   int;
+    v_day     int;
 begin
     if p_year is null or p_year !~ '^\d{4}$' then return 0; end if;
+
+    -- Tripoli, not UTC: on 30 June at 23:00 local the second installment
+    -- is not due yet, and a UTC clock would already say July.
+    v_as_of := coalesce(p_as_of, (now() at time zone 'Africa/Tripoli')::date);
 
     -- The 45-day track is fixed by regulation; everyone else gets the
     -- allocation configured for that specific year (30 unless changed).
@@ -210,31 +217,59 @@ begin
                      then 45
                      else greatest(0, coalesce(p_default_days, 30)) end;
 
-    -- Not this employee's hire year (or no hire date recorded at all):
-    -- the full year is granted.
-    if p_hire_date_current_year is null
-       or extract(year from p_hire_date_current_year)::int <> p_year::int
-    then
-        return round(v_annual, 2);
+    -- How much of this year the calendar has released.
+    if extract(year from v_as_of)::int < p_year::int then
+        v_last := 0;    -- the year has not started: nothing is owed yet
+    elsif extract(year from v_as_of)::int > p_year::int then
+        v_last := 12;   -- a past year is closed and fully released
+    elsif extract(month from v_as_of)::int >= 7 then
+        v_last := 12;   -- second installment released on 1 July
+    else
+        v_last := 6;    -- first installment only
     end if;
 
-    -- Hire year: granted pro rata over the months the employee will
-    -- actually be in post, counting from their first entitled month
-    -- through December. Joining after the 15th starts the entitlement
-    -- the following month.
-    v_month := extract(month from p_hire_date_current_year)::int;
-    v_day   := extract(day   from p_hire_date_current_year)::int;
-    v_first := case when v_day > 15 then v_month + 1 else v_month end;
-    if v_first > 12 then return 0; end if;
+    if v_last = 0 then return 0; end if;
+
+    -- First entitled month: January for anyone already in post, or the
+    -- hire month for someone hired during this very year. Joining after
+    -- the 15th starts the entitlement the following month.
+    v_first := 1;
+    if p_hire_date_current_year is not null
+       and extract(year from p_hire_date_current_year)::int = p_year::int
+    then
+        v_month := extract(month from p_hire_date_current_year)::int;
+        v_day   := extract(day   from p_hire_date_current_year)::int;
+        v_first := case when v_day > 15 then v_month + 1 else v_month end;
+        if v_first > 12 then return 0; end if;
+    end if;
+
+    -- Hired into the second half, asking during the first: nothing yet.
+    if v_first > v_last then return 0; end if;
 
     -- round(...,2), not (...,1): the 45-day track's monthly twelfth is
     -- 3.75, and one decimal place would mangle it into 3.8.
-    return round((13 - v_first) * (v_annual / 12.0), 2);
+    return round((v_last - v_first + 1) * (v_annual / 12.0), 2);
 end;
 $$;
 
+comment on function public.allocation_due(text, boolean, date, numeric, date) is
+    'الرصيد المستحق فعلياً حتى تاريخ معيّن: نصف الاستحقاق السنوي في 1 يناير والنصف الآخر في 1 يوليو، مع التناسب لمن عُيّن خلال السنة.';
+
+
+create or replace function public.year_allocation(
+    p_year                   text,
+    p_over_45                boolean default false,
+    p_hire_date_current_year date    default null,
+    p_default_days           numeric default 30
+) returns numeric
+language sql
+stable
+as $$
+    select public.allocation_due($1, $2, $3, $4, null);
+$$;
+
 comment on function public.year_allocation(text, boolean, date, numeric) is
-    'Days granted to an employee for one financial year under manual allocation: the full annual figure, prorated only across the employee''s own hire year.';
+    'الرصيد المستحق حتى اليوم — يستدعي allocation_due. يُمنح على دفعتين: 1 يناير و1 يوليو.';
 
 create or replace function public.get_employee_json(p_id bigint)
 returns jsonb
@@ -2107,6 +2142,94 @@ end;
 $$;
 
 
+create or replace function public.grant_due_installments()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_cur_year text := to_char((now() at time zone 'Africa/Tripoli')::date, 'YYYY');
+    v_created  int  := 0;
+    v_granted  int  := 0;
+begin
+    -- An active employee with no row for the current year — restored from
+    -- the archive after the year was opened — gets one, already carrying
+    -- whatever the calendar has released.
+    insert into public.employee_years (employee_id, year, added, deducted)
+    select e.id, y.year,
+           public.allocation_due(y.year, e.over_45, e.hire_date_current_year,
+                                 coalesce(y.default_days, 30), null), 0
+      from public.employees e
+      cross join public.years y
+     where e.is_archived = false
+       and coalesce(y.is_archived, false) = false
+       and y.year ~ '^\d{4}$'
+       and y.year >= v_cur_year
+       and not exists (select 1 from public.employee_years ey
+                        where ey.employee_id = e.id and ey.year = y.year)
+    on conflict (employee_id, year) do nothing;
+    get diagnostics v_created = row_count;
+
+    with due as (
+        select ey.id,
+               ey.added as stored,
+               public.allocation_due(ey.year, e.over_45, e.hire_date_current_year,
+                                     coalesce(y.default_days, 30), null) as owed
+          from public.employee_years ey
+          join public.employees e on e.id = ey.employee_id
+          join public.years     y on y.year = ey.year
+         where e.is_archived = false
+           and coalesce(y.is_archived, false) = false
+           and ey.year ~ '^\d{4}$'
+           and ey.year >= v_cur_year
+    ),
+    applied as (
+        update public.employee_years ey
+           set added = d.owed
+          from due d
+         where ey.id = d.id
+           and d.owed > d.stored
+        returning 1
+    )
+    select count(*) into v_granted from applied;
+
+    return jsonb_build_object('created', v_created, 'granted', v_granted);
+end;
+$$;
+
+
+create or replace function public.ensure_allocations_current()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_role text; v_username text; r jsonb;
+begin
+    if auth.uid() is null then
+        raise exception 'يلزم تسجيل الدخول';
+    end if;
+
+    r := public.grant_due_installments();
+
+    -- Logged only when an installment actually moved. This runs on every
+    -- page load; logging unconditionally would bury the activity log in
+    -- thousands of "nothing happened" entries and make it useless.
+    if (r->>'granted')::int > 0 or (r->>'created')::int > 0 then
+        select role, coalesce(username, '') into v_role, v_username
+            from public.profiles where id = auth.uid();
+        perform public.log_action(coalesce(v_role, 'system'), coalesce(v_username, ''),
+            'منح دفعة الرصيد المستحقة',
+            format('عدد الموظفين الذين مُنحوا: %s، صفوف أُنشئت: %s',
+                   r->>'granted', r->>'created'));
+    end if;
+
+    return r;
+end;
+$$;
+
+
 -- ---------------------------------------------------------------------
 -- 3. (6/9/10/17) REGISTER A DEDUCTION — rebuilt guards
 -- ---------------------------------------------------------------------
@@ -3025,6 +3148,14 @@ grant execute on function public.create_user(text, text, text, text) to authenti
 -- employee_net_balance/year_allocation are read-only helpers; the client may
 -- call them to show the same number the guard uses.
 grant execute on function public.year_allocation(text, boolean, date, numeric)   to authenticated;
+grant execute on function public.allocation_due(text, boolean, date, numeric, date) to authenticated;
+grant execute on function public.ensure_allocations_current()                    to authenticated;
+
+-- grant_due_installments() is the internal release engine; only
+-- ensure_allocations_current() may drive it.
+revoke all on function public.grant_due_installments() from public;
+revoke all on function public.grant_due_installments() from anon;
+revoke all on function public.grant_due_installments() from authenticated;
 grant execute on function public.employee_net_balance(bigint)                   to authenticated;
 grant execute on function public.reconcile_all_counters()                       to authenticated;
 

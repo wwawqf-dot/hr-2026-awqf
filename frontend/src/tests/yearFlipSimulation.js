@@ -19,7 +19,7 @@
 //    import('/src/tests/yearFlipSimulation.js').then(m => m.runYearFlipSimulation())
 // =====================================================================
 import { pathToFileURL } from 'node:url';
-import { getAccrualLabel, getYearEndDateStr } from '../utils/libyaTime.js';
+import { getAccrualLabel, getYearEndDateStr, getAllocationPeriodEndStr } from '../utils/libyaTime.js';
 import { computeYearlyLedger } from '../utils/leaveCalc.js';
 
 let pass = 0;
@@ -71,9 +71,13 @@ export function runYearFlipSimulation() {
     console.log('-- Rule 2: 2027-01-15 --');
     const jan15 = libyaInstant(2027, 1, 15);
 
+    // January sits in the FIRST installment, so the header names the end
+    // of that installment (30/06) — not the year end. Claiming 31/12 in
+    // January would tell the employee they hold days that the 1 July
+    // release has not handed out yet.
     assert(
-        getAccrualLabel(jan15) === 'مضاف حتى 31/12/2027',
-        `header reads "مضاف حتى 31/12/2027" (got "${getAccrualLabel(jan15)}")`
+        getAccrualLabel(jan15) === 'مضاف حتى 30/06/2027',
+        `header reads "مضاف حتى 30/06/2027" (got "${getAccrualLabel(jan15)}")`
     );
     assert(getYearEndDateStr(jan15) === '31/12/2027', 'year-end string flipped to 31/12/2027 on Jan 15');
 
@@ -90,8 +94,8 @@ export function runYearFlipSimulation() {
     const feb1 = libyaInstant(2027, 2, 1);
 
     assert(
-        getAccrualLabel(feb1) === 'مضاف حتى 31/12/2027',
-        `header still reads "مضاف حتى 31/12/2027" after a month closes (got "${getAccrualLabel(feb1)}")`
+        getAccrualLabel(feb1) === 'مضاف حتى 30/06/2027',
+        `header still reads "مضاف حتى 30/06/2027" after a month closes (got "${getAccrualLabel(feb1)}")`
     );
 
     const ledgerFeb1 = computeYearlyLedger(employee, years, 2027, feb1);
@@ -111,12 +115,23 @@ export function runYearFlipSimulation() {
         'Dec 31, 2026 still reads "مضاف حتى 31/12/2026"'
     );
     assert(
-        getAccrualLabel(libyaInstant(2027, 1, 1)) === 'مضاف حتى 31/12/2027',
-        'Jan 1, 2027 rolls the label over to "مضاف حتى 31/12/2027" on its own'
+        getAccrualLabel(libyaInstant(2027, 1, 1)) === 'مضاف حتى 30/06/2027',
+        'Jan 1, 2027 rolls the label over to the new year\'s first installment on its own'
     );
     assert(
         getAccrualLabel(libyaInstant(2027, 7, 31)) === 'مضاف حتى 31/12/2027',
         'mid-year (Jul 31) the label does NOT drift back to the last closed month'
+    );
+
+    // The 1 July release, at the exact boundary: the label must flip on
+    // the day the second installment lands and not one day early or late.
+    assert(
+        getAllocationPeriodEndStr(libyaInstant(2027, 6, 30)) === '30/06/2027',
+        'Jun 30 is still inside the first installment'
+    );
+    assert(
+        getAllocationPeriodEndStr(libyaInstant(2027, 7, 1)) === '31/12/2027',
+        'Jul 1 releases the second installment and the label follows the same day'
     );
 
     // -------------------------------------------------------------
