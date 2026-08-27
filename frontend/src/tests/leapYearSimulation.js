@@ -49,9 +49,12 @@ export function runLeapYearSimulation() {
         );
     }
     // Feb 29 itself: the one day that only exists in a leap year.
+    // February sits inside the first, not-yet-elapsed half — leap year or
+    // not. The credit steps at the half-year boundaries, which no month
+    // length can move.
     assert(
-        getAccrualLabel(libyaInstant(2028, 2, 29)) === 'مضاف حتى 31/12/2028',
-        `on Feb 29, 2028 the header still reads "مضاف حتى 31/12/2028" (got "${getAccrualLabel(libyaInstant(2028, 2, 29))}")`
+        getAccrualLabel(libyaInstant(2028, 2, 29)) === 'مضاف حتى 31/12/2027',
+        `on Feb 29, 2028 the header still reads "مضاف حتى 31/12/2027" (got "${getAccrualLabel(libyaInstant(2028, 2, 29))}")`
     );
 
     // -------------------------------------------------------------

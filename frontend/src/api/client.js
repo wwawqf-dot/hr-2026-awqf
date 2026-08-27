@@ -160,6 +160,11 @@ async function listExpiringLeaves(windowDays = 7) {
 
 export const api = {
     // ---- Employees & roster ------------------------------------------
+    // Credits any half-year whose months have elapsed. Idempotent and
+    // never lowers a balance, so it is safe on every load; it is what
+    // makes the 1 July and 31 December releases happen on their own.
+    ensureAllocations: () => rpc('ensure_allocations_current'),
+
     getEmployees: () => rpc('list_employees'),
     addEmployee: (payload) => rpc('create_employee', { p_payload: payload }),
     updateEmployee: (id, payload) => rpc('update_employee', { p_id: id, p_payload: payload }),

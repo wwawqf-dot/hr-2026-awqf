@@ -19,7 +19,7 @@
 //    import('/src/tests/yearFlipSimulation.js').then(m => m.runYearFlipSimulation())
 // =====================================================================
 import { pathToFileURL } from 'node:url';
-import { getAccrualLabel, getYearEndDateStr } from '../utils/libyaTime.js';
+import { getAccrualLabel, getYearEndDateStr, getAllocationPeriodEndStr } from '../utils/libyaTime.js';
 import { computeYearlyLedger } from '../utils/leaveCalc.js';
 
 let pass = 0;
@@ -71,9 +71,13 @@ export function runYearFlipSimulation() {
     console.log('-- Rule 2: 2027-01-15 --');
     const jan15 = libyaInstant(2027, 1, 15);
 
+    // Days are earned by serving the months. On 15 January not one month
+    // of 2027 has elapsed, so nothing from 2027 is credited yet and the
+    // honest cut-off is still the end of 2026. Naming 31/12/2027 here
+    // would credit twelve months nobody has worked.
     assert(
-        getAccrualLabel(jan15) === 'مضاف حتى 31/12/2027',
-        `header reads "مضاف حتى 31/12/2027" (got "${getAccrualLabel(jan15)}")`
+        getAccrualLabel(jan15) === 'مضاف حتى 31/12/2026',
+        `header reads "مضاف حتى 31/12/2026" (got "${getAccrualLabel(jan15)}")`
     );
     assert(getYearEndDateStr(jan15) === '31/12/2027', 'year-end string flipped to 31/12/2027 on Jan 15');
 
@@ -89,9 +93,11 @@ export function runYearFlipSimulation() {
     console.log('\n-- Rule 3: 2027-02-01 --');
     const feb1 = libyaInstant(2027, 2, 1);
 
+    // A single month closing does not release anything: the credit steps
+    // only at the half-year boundaries, never month by month.
     assert(
-        getAccrualLabel(feb1) === 'مضاف حتى 31/12/2027',
-        `header still reads "مضاف حتى 31/12/2027" after a month closes (got "${getAccrualLabel(feb1)}")`
+        getAccrualLabel(feb1) === 'مضاف حتى 31/12/2026',
+        `header still reads "مضاف حتى 31/12/2026" after a month closes (got "${getAccrualLabel(feb1)}")`
     );
 
     const ledgerFeb1 = computeYearlyLedger(employee, years, 2027, feb1);
@@ -111,12 +117,31 @@ export function runYearFlipSimulation() {
         'Dec 31, 2026 still reads "مضاف حتى 31/12/2026"'
     );
     assert(
-        getAccrualLabel(libyaInstant(2027, 1, 1)) === 'مضاف حتى 31/12/2027',
-        'Jan 1, 2027 rolls the label over to "مضاف حتى 31/12/2027" on its own'
+        getAccrualLabel(libyaInstant(2027, 1, 1)) === 'مضاف حتى 31/12/2026',
+        'Jan 1, 2027 credits nothing new: the label still names the end of 2026'
     );
     assert(
-        getAccrualLabel(libyaInstant(2027, 7, 31)) === 'مضاف حتى 31/12/2027',
-        'mid-year (Jul 31) the label does NOT drift back to the last closed month'
+        getAccrualLabel(libyaInstant(2027, 7, 31)) === 'مضاف حتى 30/06/2027',
+        'mid-year (Jul 31) the first half of 2027 has been served and credited'
+    );
+
+    // The two release points, each checked on the day before and the day
+    // itself, so a credit can neither land early nor be missed.
+    assert(
+        getAllocationPeriodEndStr(libyaInstant(2027, 6, 30)) === '31/12/2026',
+        'Jun 30: the first half has not finished, nothing from 2027 is credited'
+    );
+    assert(
+        getAllocationPeriodEndStr(libyaInstant(2027, 7, 1)) === '30/06/2027',
+        'Jul 1: the first half has elapsed and is credited that same day'
+    );
+    assert(
+        getAllocationPeriodEndStr(libyaInstant(2027, 12, 30)) === '30/06/2027',
+        'Dec 30: the second half has not finished yet'
+    );
+    assert(
+        getAllocationPeriodEndStr(libyaInstant(2027, 12, 31)) === '31/12/2027',
+        'Dec 31: the year is complete and the second half is credited'
     );
 
     // -------------------------------------------------------------
