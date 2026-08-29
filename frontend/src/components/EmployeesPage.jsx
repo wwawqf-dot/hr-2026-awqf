@@ -21,6 +21,12 @@ import { logActivity } from '../api/client';
 export default function EmployeesPage({ leaveData }) {
     const { canAdd, canFreeze, canEdit, canExport } = usePermissions();
 
+    const {
+        employees, years, settings, loading, error,
+        addEmployee, updateEmployee, deleteEmployee, toggleFreeze,
+        addDeduction, deleteDeduction,
+    } = leaveData;
+
     // Opening the new financial year is a manual admin action, and until it
     // is done register_deduction() refuses every leave dated in the new
     // year — quoting the OLD year in the error, which reads as a bug rather
@@ -32,11 +38,6 @@ export default function EmployeesPage({ leaveData }) {
         const latest = (years || []).map(Number).filter(Number.isFinite).sort((a, b) => a - b).pop();
         return latest && latest < current ? { current, latest } : null;
     }, [years]);
-    const {
-        employees, years, settings, loading, error,
-        addEmployee, updateEmployee, deleteEmployee, toggleFreeze,
-        addDeduction, deleteDeduction,
-    } = leaveData;
 
     const [search, setSearch] = useState('');
     const [modal, setModal] = useState(null);
