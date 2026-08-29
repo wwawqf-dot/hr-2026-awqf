@@ -56,6 +56,7 @@ create table if not exists public.employees (
     hire_date_current_year  date default null,
     ceiled_cumulative_balance numeric default null,
     carryover_ceiled_at_year  text default null,
+    carryover_rounding        numeric not null default 0,
     include_in_print        boolean not null default true,
     is_unpaid_leave         boolean not null default false,
     is_archived             boolean not null default false,
@@ -279,6 +280,7 @@ as $$
         'hire_date_current_year', e.hire_date_current_year,
         'ceiled_cumulative_balance', e.ceiled_cumulative_balance,
         'carryover_ceiled_at_year', e.carryover_ceiled_at_year,
+        'carryover_rounding', coalesce(e.carryover_rounding, 0),
         'years_data', coalesce((
             select jsonb_object_agg(ey.year,
                        jsonb_build_object('added', ey.added, 'deducted', ey.deducted))
@@ -1398,33 +1400,18 @@ begin
 
     v_cur_year := to_char((now() at time zone 'Africa/Tripoli')::date, 'YYYY');
 
-    if emp.carryover_ceiled_at_year is not null
-       and emp.ceiled_cumulative_balance is not null
-    then
-        -- Start from the ceiled carry-over and count only the years from
-        -- the ceiling forward — precisely what computeYearlyLedger does
-        -- when it swaps `opening` for the ceiled figure and carries on.
-        -- Counting earlier years again here would add the very balance
-        -- the ceiled figure already represents.
-        select emp.ceiled_cumulative_balance
-             + coalesce(sum(
-                   case when ey.year = v_cur_year and emp.is_unpaid_leave
-                        then 0 else coalesce(ey.added, 0) end
-                   - coalesce(ey.deducted, 0)), 0)
-          into v_balance
-          from public.employee_years ey
-         where ey.employee_id = p_employee_id
-           and ey.year >= emp.carryover_ceiled_at_year;
-    else
-        select coalesce(emp.initial_carried_forward, 0)
-             + coalesce(sum(
-                   case when ey.year = v_cur_year and emp.is_unpaid_leave
-                        then 0 else coalesce(ey.added, 0) end
-                   - coalesce(ey.deducted, 0)), 0)
-          into v_balance
-          from public.employee_years ey
-         where ey.employee_id = p_employee_id;
-    end if;
+    -- Every year counts, always. The ceiling contributes only its fraction,
+    -- so correcting a closed year moves this figure the way it should.
+    select coalesce(emp.initial_carried_forward, 0)
+         + case when emp.carryover_ceiled_at_year is not null
+                then coalesce(emp.carryover_rounding, 0) else 0 end
+         + coalesce(sum(
+               case when ey.year = v_cur_year and emp.is_unpaid_leave
+                    then 0 else coalesce(ey.added, 0) end
+               - coalesce(ey.deducted, 0)), 0)
+      into v_balance
+      from public.employee_years ey
+     where ey.employee_id = p_employee_id;
 
     return round(v_balance, 2);
 end;
@@ -1975,7 +1962,9 @@ $$;
 -- ---------------------------------------------------------------------
 -- 5. (7/17) ADD YEAR — refuse to travel backwards
 -- ---------------------------------------------------------------------
-create or replace function public.add_year(p_year text, p_default_days numeric default 30)
+create or replace function public.open_financial_year(
+    p_year text, p_default_days numeric default 30,
+    p_role text default 'system', p_username text default '')
 returns jsonb
 language plpgsql
 security definer
@@ -1989,9 +1978,12 @@ declare v_role text; v_username text; v_year text; v_default numeric;
     v_max text;
     v_this_year int;
 begin
-    select role, coalesce(username,'') into v_role, v_username
-        from public.profiles where id = auth.uid();
-    if v_role is distinct from 'admin' then raise exception 'هذه العملية مقصورة على المدير'; end if;
+    -- No role check here on purpose: this is the engine, revoked from every
+    -- client role, and the two wrappers below decide who may drive it. The
+    -- actor is passed in so the archive snapshot and the activity log still
+    -- record who (or what) opened the year.
+    v_role := coalesce(p_role, 'system');
+    v_username := coalesce(p_username, '');
     v_year := trim(coalesce(p_year, ''));
     if v_year !~ '^\d{4}$' then raise exception 'يرجى إدخال سنة مالية صحيحة'; end if;
 
@@ -2096,6 +2088,13 @@ begin
            and year < v_year;
         update public.employees set
             ceiled_cumulative_balance = ceil(v_running),
+            -- The rounding as a CONSTANT, which is what makes the carry-over
+            -- survive a later edit to a year that closed before it. Storing
+            -- only the absolute ceil(v_running) froze the sum of every prior
+            -- year into one number: a December leave recorded in January
+            -- then landed in a year the balance no longer looked at, and the
+            -- employee spent days that never left their balance.
+            carryover_rounding = ceil(v_running) - v_running,
             carryover_ceiled_at_year = v_year
         where id = emp.id;
     end loop;
@@ -2104,6 +2103,74 @@ begin
     return jsonb_build_object('years',
         coalesce((select jsonb_agg(year order by cast(year as integer))
                   from public.years where is_archived = false), '[]'::jsonb));
+end;
+$$;
+
+create or replace function public.add_year(p_year text, p_default_days numeric default 30)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_role text; v_username text;
+begin
+    select role, coalesce(username,'') into v_role, v_username
+        from public.profiles where id = auth.uid();
+    if v_role is distinct from 'admin' then raise exception 'هذه العملية مقصورة على المدير'; end if;
+    return public.open_financial_year(p_year, p_default_days, v_role, v_username);
+end;
+$$;
+
+create or replace function public.ensure_current_year()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_cur      text := to_char((now() at time zone 'Africa/Tripoli')::date, 'YYYY');
+    v_max      text;
+    v_default  numeric;
+    v_role     text;
+    v_username text;
+begin
+    if auth.uid() is null then
+        raise exception 'يلزم تسجيل الدخول';
+    end if;
+
+    -- Serialise on the year itself. Two people signing in within the same
+    -- second on 1 January would otherwise both pass the checks below and
+    -- the loser would surface 'هذه السنة مسجلة مسبقاً' as a login error.
+    perform pg_advisory_xact_lock(hashtext('ensure_current_year:' || v_cur));
+
+    if exists (select 1 from public.years where year = v_cur and is_archived = false) then
+        return jsonb_build_object('opened', false, 'year', v_cur);
+    end if;
+
+    select max(year) into v_max from public.years;
+    if v_max is null then
+        return jsonb_build_object('opened', false, 'year', null);   -- fresh install
+    end if;
+    if v_max >= v_cur then
+        return jsonb_build_object('opened', false, 'year', v_cur);  -- already ahead
+    end if;
+
+    -- Carry the previous year's configured allocation rather than assuming
+    -- 30: an office that set 32 does not want it silently reset in January.
+    select coalesce(default_days, 30) into v_default
+        from public.years where year = v_max;
+
+    select role, coalesce(username, '') into v_role, v_username
+        from public.profiles where id = auth.uid();
+
+    perform public.open_financial_year(v_cur, coalesce(v_default, 30),
+                                       coalesce(v_role, 'system'), coalesce(v_username, ''));
+
+    perform public.log_action(coalesce(v_role, 'system'), coalesce(v_username, ''),
+        'فتح سنة مالية تلقائياً',
+        format('فُتحت السنة %s تلقائياً عند دخولها، والسنة السابقة %s سُوّيت وحُفظت في الأرشيف', v_cur, v_max));
+
+    return jsonb_build_object('opened', true, 'year', v_cur, 'previous', v_max);
 end;
 $$;
 
@@ -2709,6 +2776,10 @@ grant execute on function public.create_user(text, text, text, text) to authenti
 -- call them to show the same number the guard uses.
 grant execute on function public.year_allocation(text, boolean, date, numeric)   to authenticated;
 grant execute on function public.allocation_due(text, boolean, date, numeric, date) to authenticated;
+revoke all on function public.open_financial_year(text, numeric, text, text) from public;
+revoke all on function public.open_financial_year(text, numeric, text, text) from anon;
+revoke all on function public.open_financial_year(text, numeric, text, text) from authenticated;
+grant execute on function public.ensure_current_year()                          to authenticated;
 grant execute on function public.ensure_allocations_current()                    to authenticated;
 
 -- grant_due_installments() is the internal release engine; only

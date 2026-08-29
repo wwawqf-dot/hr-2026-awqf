@@ -18,14 +18,21 @@ export function getYearAdded(employee, year, currentYear) {
 }
 
 export function computeYearlyLedger(employee, years, realLibyaYear) {
+    // Opening a year rounds the carried-forward balance UP, and the
+    // rounding is kept as a constant of less than a day. It is ADDED here
+    // rather than replacing the running total: replacing it froze the sum
+    // of every earlier year into one number, and a deduction later booked
+    // against one of those years — a December leave recorded in January —
+    // then changed nothing on this page. Adding the fraction produces the
+    // identical opening while leaving every year live.
     const ceiledAtYear = employee.carryover_ceiled_at_year;
-    const ceiledBalance = parseFloat(employee.ceiled_cumulative_balance) || null;
+    const rounding = parseFloat(employee.carryover_rounding) || 0;
     let opening = parseFloat(employee.initial_carried_forward) || 0;
     let switchedToCeiled = false;
     return years.map((year) => {
         const yearStr = String(year);
-        if (ceiledAtYear && ceiledBalance !== null && yearStr >= ceiledAtYear && !switchedToCeiled) {
-            opening = ceiledBalance;
+        if (ceiledAtYear && yearStr >= ceiledAtYear && !switchedToCeiled) {
+            opening = +(opening + rounding).toFixed(2);
             switchedToCeiled = true;
         }
         // Every year — closed or active — reads its added/deducted verbatim
@@ -66,13 +73,15 @@ export function computeNetBalance(employee, now = new Date()) {
     // Skipping the ceiling here is what used to make the table read 23
     // while the guard allowed 22.5: the screen promised a day the server
     // refused, quoting a number visible nowhere in the UI.
-    const ceiledAt = employee.carryover_ceiled_at_year;
-    const ceiled = parseFloat(employee.ceiled_cumulative_balance);
-    const useCeiled = !!ceiledAt && Number.isFinite(ceiled);
-
-    let balance = useCeiled ? ceiled : parseFloat(employee.initial_carried_forward) || 0;
+    // Mirrors employee_net_balance(): every year counts, and the ceiling
+    // contributes only its fraction. Skipping the pre-ceiling years — as
+    // this used to — is what let days be taken out of a closed year
+    // without the balance ever moving.
+    let balance = parseFloat(employee.initial_carried_forward) || 0;
+    if (employee.carryover_ceiled_at_year) {
+        balance += parseFloat(employee.carryover_rounding) || 0;
+    }
     for (const [year, yd] of Object.entries(yearsData)) {
-        if (useCeiled && String(year) < String(ceiledAt)) continue;
         balance += getYearAdded(employee, year, currentYear) - (parseFloat(yd?.deducted) || 0);
     }
     return +balance.toFixed(2);

@@ -475,6 +475,20 @@ code {
     margin-bottom: 1.1rem;
 }
 
+/* Shown when Tripoli's calendar year has no open financial year yet.
+   Amber, not red: nothing is broken — an action is simply overdue. */
+.year-gap-banner {
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: #fcd34d;
+    padding: 0.85rem 1.1rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    margin-bottom: 1.1rem;
+    line-height: 1.7;
+}
+.year-gap-banner strong { color: #fde68a; }
+
 .time-guard-banner {
     background: rgba(220, 38, 38, 0.18);
     border: 2px solid rgba(239, 68, 68, 0.7);

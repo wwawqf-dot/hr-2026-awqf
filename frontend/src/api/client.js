@@ -160,6 +160,11 @@ async function listExpiringLeaves(windowDays = 7) {
 
 export const api = {
     // ---- Employees & roster ------------------------------------------
+    // Opens the financial year the calendar has entered, if it is not open
+    // yet. Must run BEFORE ensureAllocations: the release pass can only
+    // credit a year that exists, and on 1 January the new one does not.
+    ensureCurrentYear: () => rpc('ensure_current_year'),
+
     // Credits any half-year whose months have elapsed. Idempotent and
     // never lowers a balance, so it is safe on every load; it is what
     // makes the 1 July and 31 December releases happen on their own.

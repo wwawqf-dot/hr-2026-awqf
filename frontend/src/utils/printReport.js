@@ -1,6 +1,7 @@
 import { formatDateDisplay } from './formatDate.js';
 import { getLibyaDisplayDate, getAccrualLabel, getLibyaYear } from './libyaTime.js';
 import { computeYearlyLedger } from './leaveCalc.js';
+import { REPORT_LOGO } from '../assets/reportLogo.js';
 
 function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -43,6 +44,22 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
         <style>
             body { font-family: 'Tajawal', sans-serif; padding: 30px; color: #000; background: #fff; }
             .report-header { text-align: center; margin-bottom: 15px; line-height: 1.8; }
+            /* The emblem flanks the title block on both sides. A flex row
+               rather than floats or absolute positioning: the centre column
+               stays optically centred whatever the title wraps to, and the
+               two marks keep an identical size instead of one drifting. */
+            .header-row {
+                display: flex; align-items: center; justify-content: center;
+                gap: 28px;
+            }
+            .header-text { flex: 1 1 auto; }
+            .report-logo {
+                flex: 0 0 auto; height: 95px; width: auto;
+                /* Browsers strip background graphics from printouts by
+                   default; without this the emblem is on screen and absent
+                   on paper, which is the one place it is needed. */
+                -webkit-print-color-adjust: exact; print-color-adjust: exact;
+            }
             .report-header h3 { margin: 0; font-size: 20px; font-weight: 800; }
             .report-header h2 { margin: 15px 0 10px 0; font-size: 24px; font-weight: 800; }
             .report-header p { margin: 0; font-size: 15px; }
@@ -74,10 +91,16 @@ export function printReport(selectedYear, years, employees, openingBalanceDate) 
         </div>
 
         <div class="report-header">
-            <h3>الهيئة العامة للأوقاف والشؤون الإسلامية</h3>
-            <h3>مكتب الأوقاف والشؤون الإسلامية القره بوللي</h3>
-            <h2>التقرير الإجمالي السنوي لأرصدة إجازات الموظفين</h2>
-            <p>تاريخ الإصدار: ${formattedDate}</p>
+            <div class="header-row">
+                <img class="report-logo" src="${REPORT_LOGO}" alt="">
+                <div class="header-text">
+                    <h3>الهيئة العامة للأوقاف والشؤون الإسلامية</h3>
+                    <h3>مكتب الأوقاف والشؤون الإسلامية القره بوللي</h3>
+                    <h2>التقرير الإجمالي السنوي لأرصدة إجازات الموظفين</h2>
+                    <p>تاريخ الإصدار: ${formattedDate}</p>
+                </div>
+                <img class="report-logo" src="${REPORT_LOGO}" alt="">
+            </div>
         </div>
 
         <hr style="border: 0; border-top: 3px solid #000; margin-bottom: 20px;">

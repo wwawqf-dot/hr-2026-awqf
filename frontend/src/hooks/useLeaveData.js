@@ -36,7 +36,15 @@ export function useLeaveData(enabled = true) {
         // and then jumps on the next reload. A failure here is non-fatal:
         // the balances already stored still display, and the next load
         // retries.
-        api.ensureAllocations()
+        // Order matters and is not interchangeable: the year must exist
+        // before the release pass can credit anything into it, and both
+        // must finish before the first read so the table never paints a
+        // pre-rollover picture and then jumps.
+        api.ensureCurrentYear()
+            .catch((err) => {
+                console.error('[year] تعذّر فتح السنة المالية تلقائياً:', err?.message || err);
+            })
+            .then(() => api.ensureAllocations())
             .catch((err) => {
                 // Non-fatal — the stored balances still display and the
                 // next load retries — but NOT silent. This call is the

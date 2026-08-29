@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { usePermissions } from '../hooks/usePermissions';
+import { getLibyaYear } from '../utils/libyaTime';
 import PageHeader from './PageHeader';
 import SearchBar from './SearchBar';
 import EmployeesTable from './EmployeesTable';
@@ -19,6 +20,18 @@ import { logActivity } from '../api/client';
 // no longer called independently here.
 export default function EmployeesPage({ leaveData }) {
     const { canAdd, canFreeze, canEdit, canExport } = usePermissions();
+
+    // Opening the new financial year is a manual admin action, and until it
+    // is done register_deduction() refuses every leave dated in the new
+    // year — quoting the OLD year in the error, which reads as a bug rather
+    // than as a missing step. Nothing warned anyone: the gap was only ever
+    // discovered by a clerk hitting the refusal. This says it plainly, on
+    // the page everyone opens first.
+    const yearGap = useMemo(() => {
+        const current = Number(getLibyaYear());
+        const latest = (years || []).map(Number).filter(Number.isFinite).sort((a, b) => a - b).pop();
+        return latest && latest < current ? { current, latest } : null;
+    }, [years]);
     const {
         employees, years, settings, loading, error,
         addEmployee, updateEmployee, deleteEmployee, toggleFreeze,
@@ -93,6 +106,17 @@ export default function EmployeesPage({ leaveData }) {
                     </button>
                 )}
             </PageHeader>
+
+            {yearGap && (
+                <div className="year-gap-banner">
+                    <i className="fas fa-triangle-exclamation" style={{ marginLeft: 8 }}></i>
+                    دخلت سنة <strong>{yearGap.current}</strong> ولم تُفتح بعد في المنظومة — آخر سنة مالية مفتوحة هي{' '}
+                    <strong>{yearGap.latest}</strong>.
+                    {' '}لن يقبل النظام تسجيل أي إجازة بتاريخ {yearGap.current} حتى تُفتح السنة
+                    {' '}من <strong>الإعدادات ← أساسيات النظام ← إضافة سنة مالية</strong>.
+                    {' '}الأرصدة والخصومات المسجّلة كلها سليمة ولا يمسّها هذا.
+                </div>
+            )}
 
             <ExpiringLeavesWidget />
 
