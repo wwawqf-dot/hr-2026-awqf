@@ -3,6 +3,7 @@ import PageHeader from './PageHeader';
 import LoadingSpinner from './LoadingSpinner';
 import { TableSkeleton } from './SkeletonLoader';
 import { getLibyaDateStr, getLibyaYear } from '../utils/libyaTime';
+import { downloadBackupFile } from '../utils/backupFile';
 import { logActivity } from '../api/client';
 
 // Structural validation of an imported backup file, run BEFORE anything is
@@ -48,7 +49,7 @@ function validateBackupPayload(parsed) {
 export default function SettingsPage({ leaveData }) {
     const {
         years, settings, loading, error, addYear, deleteYear, updateSettings,
-        exportBackup, importBackup,
+        importBackup,
         getArchivedEmployees, restoreEmployee, getArchivedYears, restoreYear,
         finalizeYear, listYearArchives, getYearArchive, reconcileCounters,
     } = leaveData;
@@ -152,18 +153,6 @@ export default function SettingsPage({ leaveData }) {
         } finally {
             setSavingYear(false);
         }
-    }
-
-    async function downloadBackupFile() {
-        const data = await exportBackup();
-        const dataStr = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data, null, 2));
-        const a = document.createElement('a');
-        a.setAttribute('href', dataStr);
-        a.setAttribute('download', 'نسخة_تصدير_منظومة_الإجازات_' + getLibyaDateStr() + '.json');
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        return data;
     }
 
     async function handleDeleteYear(year) {

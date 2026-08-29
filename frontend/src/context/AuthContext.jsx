@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 import { supabase } from '../supabaseClient';
 import { ApiError, setOnAuthExpired } from '../api/client';
 import { api } from '../api/client';
+import { downloadBackupFile } from '../utils/backupFile';
 
 const AuthContext = createContext(null);
 
@@ -108,6 +109,25 @@ export function AuthProvider({ children }) {
         };
         setUser(enriched);
         setLoading(false);
+
+        // Automatic backup on sign-in. Deliberately NOT awaited: the export
+        // walks every employee, year row and deduction, and making the
+        // admin stare at a spinner for it would turn a safety net into an
+        // annoyance they ask to have removed.
+        //
+        // Guarded on the role because export_all() is admin-only server
+        // side. Firing it for a متابع or a مُدخل بيانات would not produce a
+        // file — it would produce a permission error on every single login.
+        //
+        // A failure here must never block the session: the user is already
+        // signed in and the app is usable. It is reported to the console
+        // rather than swallowed, because a backup nobody knows has stopped
+        // running is the worst of both worlds.
+        if (enriched.role === 'admin') {
+            downloadBackupFile({ auto: true }).catch((err) => {
+                console.error('[backup] تعذّر تصدير النسخة التلقائية عند الدخول:', err?.message || err);
+            });
+        }
         return enriched;
     }, []);
 
