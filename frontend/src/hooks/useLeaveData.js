@@ -36,7 +36,16 @@ export function useLeaveData(enabled = true) {
         // and then jumps on the next reload. A failure here is non-fatal:
         // the balances already stored still display, and the next load
         // retries.
-        api.ensureAllocations().catch(() => {}).then(refresh);
+        api.ensureAllocations()
+            .catch((err) => {
+                // Non-fatal — the stored balances still display and the
+                // next load retries — but NOT silent. This call is the
+                // only thing that releases the 1 July and 31 December
+                // installments; a failure that nobody ever sees is a
+                // failure that quietly costs every employee days.
+                console.error('[allocations] تعذّر منح الدفعة المستحقة:', err?.message || err);
+            })
+            .then(refresh);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [refresh, enabled]);
 

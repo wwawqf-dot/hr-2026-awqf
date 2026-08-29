@@ -55,8 +55,24 @@ export function computeYearlyLedger(employee, years, realLibyaYear) {
 export function computeNetBalance(employee, now = new Date()) {
     const currentYear = getLibyaYear(now);
     const yearsData = employee.years_data || {};
-    let balance = parseFloat(employee.initial_carried_forward) || 0;
+
+    // add_year() rounds the carried-forward balance UP when it opens a
+    // year and stores it as ceiled_cumulative_balance. computeYearlyLedger
+    // takes that figure AS the opening from that year on, so the balance
+    // must start there too and count only the years from the ceiling
+    // forward — the earlier years are already inside the ceiled number,
+    // and re-adding them would count them twice.
+    //
+    // Skipping the ceiling here is what used to make the table read 23
+    // while the guard allowed 22.5: the screen promised a day the server
+    // refused, quoting a number visible nowhere in the UI.
+    const ceiledAt = employee.carryover_ceiled_at_year;
+    const ceiled = parseFloat(employee.ceiled_cumulative_balance);
+    const useCeiled = !!ceiledAt && Number.isFinite(ceiled);
+
+    let balance = useCeiled ? ceiled : parseFloat(employee.initial_carried_forward) || 0;
     for (const [year, yd] of Object.entries(yearsData)) {
+        if (useCeiled && String(year) < String(ceiledAt)) continue;
         balance += getYearAdded(employee, year, currentYear) - (parseFloat(yd?.deducted) || 0);
     }
     return +balance.toFixed(2);

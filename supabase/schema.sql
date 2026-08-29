@@ -117,27 +117,6 @@ insert into public.settings (key, value) values
 --    Role/username come from the sign-up metadata; default viewer
 --    (admin assigns role post-creation via the UI dropdown).
 -- ---------------------------------------------------------------------
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-    insert into public.profiles (id, username, role, email)
-    values (
-        new.id,
-        coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
-        'viewer', -- never trust a client-supplied role; the only way to get
-                  -- data_entry/viewer is consume_invite_code() (server-side),
-                  -- and admins are only minted by an existing admin via
-                  -- update_user_role().
-        new.email
-    )
-    on conflict (id) do nothing;
-    return new;
-end;
-$$;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
@@ -364,159 +343,8 @@ $$;
 --   * insufficient-balance block (dated AND dateless)
 --   * timezone-proof year inference from the start date
 -- p_payload keys: start, end, customHolidays, unknownDays, note
-create or replace function public.register_deduction(p_employee_id bigint, p_payload jsonb)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-    v_role text; v_username text; emp public.employees%rowtype;
-    v_has_dates boolean; v_has_unknown boolean;
-    v_years text[]; v_latest text; v_start_year text;
-    v_year text; v_days numeric; v_start text := ''; v_end text := '';
-    v_retro int; v_net numeric; v_note text;
-    p_start text := nullif(p_payload->>'start', '');
-    p_end   text := nullif(p_payload->>'end', '');
-    p_holidays numeric := coalesce((p_payload->>'customHolidays')::numeric, 0);
-    p_unknown  text := nullif(trim(coalesce(p_payload->>'unknownDays','')), '');
-begin
-    if auth.uid() is null then raise exception 'غير مصرح'; end if;
-    select role, coalesce(username, '') into v_role, v_username
-        from public.profiles where id = auth.uid();
-    if v_role is null then raise exception 'الحساب غير مُهيأ'; end if;
-
-    -- Pessimistic row lock: prevents two concurrent deductions from both
-    -- passing the insufficient-balance check before either one commits.
-    select * into emp from public.employees where id = p_employee_id for update;
-    if not found then raise exception 'الموظف غير موجود'; end if;
-    -- Unpaid leave employees can still register deductions (the frontend
-    -- shows their balance as 0 everywhere, so the negative-balance guard
-    -- below must be skipped for them).
-    v_note := nullif(left(trim(coalesce(p_payload->>'note','')), 500), '');
-
-    select array_agg(year order by cast(year as integer)) into v_years
-        from public.years where coalesce(is_archived, false) = false;
-    if v_years is null then raise exception 'لا توجد سنة مالية نشطة لتسجيل الخصم'; end if;
-    v_latest := v_years[array_length(v_years, 1)];
-
-    v_has_dates   := (p_start is not null and p_end is not null);
-    v_has_unknown := (p_unknown is not null);
-
-    if v_has_dates then
-        v_start_year := split_part(p_start, '-', 1);
-        -- Strict Time Guard: the deduction's year must be exactly the
-        -- active (latest, non-archived) financial year — not merely any
-        -- year that happens to still have a row in public.years.
-        if v_start_year is distinct from v_latest then
-            raise exception 'لا يمكن تسجيل الإجازة: تاريخ الإجازة يقع خارج السنة المالية النشطة حالياً. يرجى إغلاق السنة الحالية أو تفعيل السنة المناسبة.';
-        end if;
-        v_year := v_start_year;
-        if p_holidays < 0 then
-            raise exception 'لا يمكن أن يكون عدد العطلات الرسمية سالباً';
-        end if;
-        v_days := public.calculate_deduction_days(p_start::date, p_end::date, p_holidays);
-        if v_days <= 0 then
-            raise exception 'يجب أن يكون عدد أيام الخصم أكبر من صفر';
-        end if;
-        if v_days > 366 then
-            raise exception 'لا يمكن تسجيل خصم يتجاوز 366 يوماً في عملية واحدة';
-        end if;
-        -- "Today" must be Libya's calendar date, not the database server's.
-        -- Supabase runs on UTC, so between 00:00 and 02:00 Libya time
-        -- `current_date` is still yesterday — silently widening the 40-day
-        -- window to 41 during those hours and disagreeing with the
-        -- frontend's Africa/Tripoli check.
-        v_retro := ((now() at time zone 'Africa/Tripoli')::date - p_start::date);
-        if v_retro > 40 then
-            raise exception 'لا يمكن تسجيل إجازة بتاريخ رجعي يتجاوز 40 يوماً من تاريخ النظام الحالي.';
-        end if;
-        v_start := p_start; v_end := p_end;
-
-        if exists (select 1 from public.deductions
-                    where employee_id = emp.id and start_date = v_start and end_date = v_end) then
-            raise exception 'هذا الخصم مسجل مسبقاً لهذا التاريخ';
-        end if;
-    elsif v_has_unknown then
-        v_days := p_unknown::numeric;
-        if not (v_days > 0) then
-            raise exception 'يرجى إدخال عدد أيام صحيح أكبر من صفر';
-        end if;
-        if v_days > 366 then
-            raise exception 'لا يمكن تسجيل خصم يتجاوز 366 يوماً في عملية واحدة';
-        end if;
-        v_year := v_latest;
-    else
-        raise exception 'يرجى تحديد تاريخ البداية والنهاية أو عدد أيام الخصم';
-    end if;
-
-    -- Insufficient-balance protection (computed BEFORE the new year row is
-    -- inserted, matching the original Express behavior exactly).
-    -- Bypassed for unpaid leave employees (their balance is 0 by design).
-    if not emp.is_unpaid_leave then
-        select coalesce(emp.initial_carried_forward, 0)
-             + coalesce(sum(coalesce(added,0) - coalesce(deducted,0)), 0)
-          into v_net
-          from public.employee_years where employee_id = emp.id;
-        if v_days > v_net then
-            raise exception 'فشلت العملية: رصيد الموظف الحالي غير كافٍ لتغطية عدد أيام الخصم المطلوبة.';
-        end if;
-    end if;
-
-    insert into public.employee_years (employee_id, year, added, deducted)
-    values (emp.id, v_year, case when emp.over_45 then 45 else 30 end, 0)
-    on conflict (employee_id, year) do nothing;
-
-    update public.employee_years set deducted = deducted + v_days
-        where employee_id = emp.id and year = v_year;
-
-    -- Post-update sanity check (defence in depth against race / logic bugs).
-    -- Skipped for unpaid leave employees — they are allowed to go negative.
-    if not emp.is_unpaid_leave then
-        if coalesce((select coalesce(emp.initial_carried_forward,0)
-                      + sum(coalesce(added,0) - coalesce(deducted,0))
-                 from public.employee_years where employee_id = emp.id), 0) < 0 then
-            raise exception 'خطأ داخلي: الرصيف سالب بعد الخصم - تم إلغاء العملية';
-        end if;
-    end if;
-
-    insert into public.deductions (employee_id, year, start_date, end_date, days, note, created_by, created_at)
-    values (emp.id, v_year, v_start, v_end, v_days, v_note, v_username, now());
-
-    perform public.log_action(v_role, v_username, 'تسجيل خصم إجازة',
-        format('تم خصم %s يوم من رصيد %s لسنة %s%s', v_days, emp.name, v_year,
-               case when v_has_dates then '' else ' (بدون تاريخ محدد)' end));
-
-    return jsonb_build_object('employee', public.get_employee_json(emp.id));
-end;
-$$;
 
 -- Delete a deduction and restore the counter (ADMIN only).
-create or replace function public.delete_deduction(p_deduction_id bigint)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare v_role text; v_username text; d public.deductions%rowtype;
-begin
-    select role, coalesce(username,'') into v_role, v_username
-        from public.profiles where id = auth.uid();
-    if v_role is distinct from 'admin' then
-        raise exception 'هذه العملية مقصورة على المدير';
-    end if;
-    select * into d from public.deductions where id = p_deduction_id for update;
-    if not found then raise exception 'سجل الخصم غير موجود'; end if;
-
-    update public.employee_years set deducted = greatest(0, deducted - d.days)
-        where employee_id = d.employee_id and year = d.year;
-    delete from public.deductions where id = d.id;
-
-    perform public.log_action(v_role, v_username, 'حذف خصم إجازة',
-        format('تم حذف خصم %s يوم', d.days));
-    return jsonb_build_object('employee', public.get_employee_json(d.employee_id));
-end;
-$$;
 
 -- Create an employee, with optional paper-inventory reconciliation
 -- (ADMIN only). p_payload mirrors the old POST /employees body.
@@ -789,142 +617,6 @@ $$;
 -- into the cloud DB via UPSERT — matching employees by id, then by
 -- job_number, so job numbers and ids are preserved and no duplicates
 -- are created. Deductions merge by id (existing ids are left as-is).
-create or replace function public.sync_employees(p_payload jsonb)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-    v_role text; v_username text;
-    v_years jsonb; v_settings jsonb;
-    emp jsonb; ded jsonb; yv text; yd_key text; yd_val jsonb;
-    v_target bigint; v_created int := 0; v_updated int := 0; v_ded int := 0;
-begin
-    select role, coalesce(username,'') into v_role, v_username
-        from public.profiles where id = auth.uid();
-    if v_role is distinct from 'admin' then
-        raise exception 'هذه العملية مقصورة على المدير';
-    end if;
-
-    v_years    := coalesce(p_payload->'years', '[]'::jsonb);
-    v_settings := p_payload->'settings';
-
-    for yv in select value from jsonb_array_elements_text(v_years) loop
-        if yv ~ '^\d{4}$' then
-            insert into public.years (year) values (yv) on conflict (year) do nothing;
-        end if;
-    end loop;
-
-    for emp in select value from jsonb_array_elements(coalesce(p_payload->'employees','[]'::jsonb)) loop
-        if coalesce(trim(emp->>'name'), '') = '' then continue; end if;
-
-        v_target := null;
-        if nullif(emp->>'id','') is not null then
-            select id into v_target from public.employees where id = (emp->>'id')::bigint;
-        end if;
-        if v_target is null and coalesce(trim(emp->>'job_number'),'') <> '' then
-            select id into v_target from public.employees
-                where job_number = trim(emp->>'job_number') limit 1;
-        end if;
-
-        if v_target is null then
-            insert into public.employees
-                (id, name, job_number, national_id, job_title, initial_carried_forward, over_45, is_frozen, include_in_print, is_unpaid_leave, is_archived, hire_date, hire_date_current_year, created_at)
-            values (
-                coalesce(nullif(emp->>'id','')::bigint,
-                         nextval(pg_get_serial_sequence('public.employees','id'))),
-                trim(emp->>'name'),
-                coalesce(trim(emp->>'job_number'),''),
-                coalesce(trim(emp->>'national_id'),''),
-                coalesce(trim(emp->>'job_title'),''),
-                coalesce((emp->>'initial_carried_forward')::numeric, 0),
-                coalesce((emp->>'over_45')::boolean, false),
-                coalesce((emp->>'is_frozen')::boolean, false),
-                coalesce((emp->>'include_in_print')::boolean, true),
-                coalesce((emp->>'is_unpaid_leave')::boolean, false),
-                coalesce((emp->>'is_archived')::boolean, false),
-                coalesce(trim(emp->>'hire_date'),''),
-                coalesce(nullif(emp->>'hire_date_current_year',''), null)::date,
-                coalesce((emp->>'createdAt')::timestamptz, now())
-            ) returning id into v_target;
-            v_created := v_created + 1;
-        else
-            update public.employees set
-                name = trim(emp->>'name'),
-                job_number  = coalesce(trim(emp->>'job_number'), job_number),
-                national_id = coalesce(trim(emp->>'national_id'), national_id),
-                job_title   = coalesce(trim(emp->>'job_title'), job_title),
-                initial_carried_forward = coalesce((emp->>'initial_carried_forward')::numeric, initial_carried_forward),
-                over_45   = coalesce((emp->>'over_45')::boolean, over_45),
-                is_frozen = coalesce((emp->>'is_frozen')::boolean, is_frozen),
-                include_in_print = coalesce((emp->>'include_in_print')::boolean, include_in_print),
-                is_unpaid_leave = coalesce((emp->>'is_unpaid_leave')::boolean, is_unpaid_leave),
-                is_archived = coalesce((emp->>'is_archived')::boolean, is_archived),
-                hire_date = coalesce(trim(emp->>'hire_date'), hire_date),
-                hire_date_current_year = coalesce(nullif(emp->>'hire_date_current_year',''), hire_date_current_year)::date
-            where id = v_target;
-            v_updated := v_updated + 1;
-        end if;
-
-        if emp ? 'years_data' then
-            for yd_key, yd_val in select key, value from jsonb_each(emp->'years_data') loop
-                if yd_key ~ '^\d{4}$' then
-                    insert into public.years (year) values (yd_key) on conflict (year) do nothing;
-                    insert into public.employee_years (employee_id, year, added, deducted)
-                    values (v_target, yd_key,
-                            coalesce((yd_val->>'added')::numeric, 0),
-                            coalesce((yd_val->>'deducted')::numeric, 0))
-                    on conflict (employee_id, year)
-                        do update set added = excluded.added, deducted = excluded.deducted;
-                end if;
-            end loop;
-        end if;
-
-        if emp ? 'deductions_history' then
-            for ded in select value from jsonb_array_elements(emp->'deductions_history') loop
-                if not (coalesce((ded->>'days')::numeric, 0) > 0) then continue; end if;
-                if nullif(ded->>'id','') is not null then
-                    insert into public.deductions
-                        (id, employee_id, year, start_date, end_date, days, note, created_by, created_at)
-                    values ((ded->>'id')::bigint, v_target, coalesce(ded->>'year',''),
-                            coalesce(ded->>'start',''), coalesce(ded->>'end',''),
-                            (ded->>'days')::numeric,
-                            nullif(left(trim(coalesce(ded->>'note','')),500),''),
-                            ded->>'createdBy', coalesce((ded->>'createdAt')::timestamptz, now()))
-                    on conflict (id) do nothing;
-                else
-                    insert into public.deductions
-                        (employee_id, year, start_date, end_date, days, note, created_by, created_at)
-                    values (v_target, coalesce(ded->>'year',''), coalesce(ded->>'start',''),
-                            coalesce(ded->>'end',''), (ded->>'days')::numeric,
-                            nullif(left(trim(coalesce(ded->>'note','')),500),''),
-                            ded->>'createdBy', coalesce((ded->>'createdAt')::timestamptz, now()));
-                end if;
-                v_ded := v_ded + 1;
-            end loop;
-        end if;
-    end loop;
-
-    if v_settings is not null and (v_settings->>'openingBalanceDate') ~ '^\d{4}-\d{2}-\d{2}$' then
-        insert into public.settings (key, value)
-        values ('openingBalanceDate', v_settings->>'openingBalanceDate')
-        on conflict (key) do update set value = excluded.value;
-    end if;
-
-    -- keep the identity sequences ahead of any explicit ids we inserted
-    perform setval(pg_get_serial_sequence('public.employees','id'),
-                   (select coalesce(max(id),1) from public.employees),
-                   (select count(*) > 0 from public.employees));
-    perform setval(pg_get_serial_sequence('public.deductions','id'),
-                   (select coalesce(max(id),1) from public.deductions),
-                   (select count(*) > 0 from public.deductions));
-
-    perform public.log_action(v_role, v_username, 'مزامنة سحابية (استيراد JSON)',
-        format('موظفون جدد: %s، تحديثات: %s، خصومات: %s', v_created, v_updated, v_ded));
-    return jsonb_build_object('created', v_created, 'updated', v_updated, 'deductions', v_ded);
-end;
-$$;
 
 -- Read the whole roster in one round-trip (both roles). Same shape the
 -- old GET /employees returned: { employees:[...], years:[...] }.
@@ -1055,95 +747,6 @@ $$;
 -- When a BRAND-NEW year is opened, the immediately previous active year
 -- is automatically frozen into its own isolated archive (year_archives),
 -- so each year lives in a separate sealed box.
-create or replace function public.add_year(p_year text, p_default_days numeric default 30)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare v_role text; v_username text; v_year text; v_default numeric;
-    emp record;
-    v_running numeric;
-    v_was_archived boolean;
-    v_prev text;
-begin
-    select role, coalesce(username,'') into v_role, v_username
-        from public.profiles where id = auth.uid();
-    if v_role is distinct from 'admin' then raise exception 'هذه العملية مقصورة على المدير'; end if;
-    v_year := trim(coalesce(p_year, ''));
-    if v_year !~ '^\d{4}$' then raise exception 'يرجى إدخال سنة مالية صحيحة'; end if;
-
-    if exists (select 1 from public.years where year = v_year and is_archived = false) then
-        raise exception 'هذه السنة مسجلة مسبقاً';
-    end if;
-    v_was_archived := exists (select 1 from public.years where year = v_year and is_archived = true);
-    v_default := coalesce(p_default_days, 30);
-
-    -- Year roll-over: opening a brand-new year freezes the previous
-    -- active year into its own isolated archive (separate from the new
-    -- year). Never touches live rows; archive_year()/restore_year()
-    -- remain the only way to hide/show a year in the UI.
-    if not v_was_archived then
-        select max(y.year) into v_prev
-        from public.years y
-        where y.is_archived = false and y.year < v_year;
-        if v_prev is not null then
-            insert into public.year_archives (year, frozen_by, snapshot)
-            values (v_prev, v_username, public.build_year_archive_snapshot(v_prev))
-            on conflict (year) do update
-                set frozen_at = now(),
-                    frozen_by = excluded.frozen_by,
-                    snapshot   = excluded.snapshot;
-            perform public.log_action(v_role, v_username, 'أرشفة سنة مالية',
-                format('تم حفظ الأرشيف المنفصل للسنة %s تلقائياً عند فتح سنة %s', v_prev, v_year));
-        end if;
-    end if;
-
-    if v_was_archived then
-        update public.years set is_archived = false where year = v_year;
-    else
-        insert into public.years (year) values (v_year);
-    end if;
-
-    insert into public.employee_years (employee_id, year, added, deducted)
-    select id, v_year, case when over_45 then 45 else v_default end, 0
-        from public.employees where is_archived = false
-    on conflict (employee_id, year) do nothing;
-
-    -- The opening balance of the year being opened is what the employee
-    -- carried OUT of the years that closed before it, so the sum must
-    -- exclude v_year itself. The row for v_year was inserted a few lines
-    -- above carrying this year's full grant; including it here made
-    -- ceiled_cumulative_balance contain that grant, and the ledger then
-    -- added the very same grant a second time on top of the opening it
-    -- had just been handed (computeYearlyLedger takes this value AS the
-    -- opening, then adds the year's `added` to it). Every employee's
-    -- "الصافي التراكمي" therefore read exactly one annual grant too high
-    -- from the moment a financial year was opened.
-    --
-    -- `year < v_year` rather than `year <> v_year`: restoring an archived
-    -- year is allowed to reopen a year OLDER than the newest one, and in
-    -- that case the opening must still be the balance carried out of the
-    -- years before it, not a total that sweeps in the years after it.
-    for emp in select e.id, e.initial_carried_forward from public.employees e where e.is_archived = false loop
-        select coalesce(emp.initial_carried_forward, 0)
-             + coalesce(sum(coalesce(added,0) - coalesce(deducted,0)), 0)
-          into v_running
-          from public.employee_years
-         where employee_id = emp.id
-           and year < v_year;
-        update public.employees set
-            ceiled_cumulative_balance = ceil(v_running),
-            carryover_ceiled_at_year = v_year
-        where id = emp.id;
-    end loop;
-
-    perform public.log_action(v_role, v_username, 'إضافة سنة مالية', format('السنة: %s', v_year));
-    return jsonb_build_object('years',
-        coalesce((select jsonb_agg(year order by cast(year as integer))
-                  from public.years where is_archived = false), '[]'::jsonb));
-end;
-$$;
 
 -- Soft-delete (archive) a financial year (ADMIN only) — replaces the old
 -- destructive delete_year, which hard-deleted every deduction and
@@ -1193,6 +796,21 @@ begin
         raise exception 'هذه السنة ليست في الأرشيف';
     end if;
     update public.years set is_archived = false where year = v_year;
+
+    -- A year can be hidden before a release point and brought back after
+    -- it. The release pass only reaches one year back, so a year hidden
+    -- for longer would return permanently short. Settle it on the way in,
+    -- as of today and upward only.
+    update public.employee_years ey
+       set added = public.allocation_due(ey.year, e.over_45,
+                       e.hire_date_current_year, coalesce(y.default_days, 30), null)
+      from public.employees e, public.years y
+     where ey.employee_id = e.id
+       and y.year = ey.year
+       and ey.year = v_year
+       and e.is_archived = false
+       and public.allocation_due(ey.year, e.over_45, e.hire_date_current_year,
+               coalesce(y.default_days, 30), null) > ey.added;
     perform public.log_action(v_role, v_username, 'استعادة سنة مالية من الأرشيف', format('السنة: %s', v_year));
     return jsonb_build_object('years',
         coalesce((select jsonb_agg(year order by cast(year as integer))
@@ -1554,80 +1172,12 @@ create policy "admin can update invite_codes"
     with check (public.current_app_role() = 'admin');
 
 -- Generate a new invite code. Admin only (checked by app role).
-create or replace function public.generate_invite_code(p_role text)
-returns text
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-    v_code text;
-begin
-    if public.current_app_role() != 'admin' then
-        raise exception 'هذه العملية مقصورة على المدير';
-    end if;
-    if p_role not in ('data_entry', 'viewer') then
-        raise exception 'الصلاحية غير صالحة';
-    end if;
-    v_code := 'WQF-' || upper(encode(gen_random_bytes(5), 'hex'));
-    insert into public.invite_codes (code, role, created_by)
-    values (v_code, p_role, auth.uid());
-    return v_code;
-end;
-$$;
 
 -- Validate an invite code (returns role if valid, raises otherwise).
-create or replace function public.validate_invite_code(p_code text)
-returns text
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-    v_role text;
-begin
-    select role into v_role
-    from public.invite_codes
-    where code = p_code and is_used = false;
-    if not found then
-        raise exception 'رمز الدعوة غير صالح أو تم استخدامه مسبقاً';
-    end if;
-    return v_role;
-end;
-$$;
 
 -- Consume an invite code and grant the caller the code's role. This is the
 -- ONLY place a role above 'viewer' is granted on sign-up; invite_codes.role
 -- is constrained to ('data_entry','viewer'), so it can never mint an admin.
-create or replace function public.consume_invite_code(p_code text)
-returns text
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-    v_role text;
-begin
-    if auth.uid() is null then
-        raise exception 'غير مصرح';
-    end if;
-
-    -- Lock the row so two concurrent redemptions of the same code can't
-    -- both succeed.
-    select role into v_role from public.invite_codes
-        where code = p_code and is_used = false
-        for update;
-    if not found then
-        raise exception 'رمز الدعوة غير صالح أو سبق استخدامه';
-    end if;
-
-    update public.invite_codes set is_used = true where code = p_code;
-
-    update public.profiles set role = v_role where id = auth.uid();
-
-    return v_role;
-end;
-$$;
 
 grant execute on function public.generate_invite_code(text)    to authenticated;
 grant execute on function public.validate_invite_code(text)     to authenticated;
@@ -1655,83 +1205,10 @@ alter table public.profiles add constraint profiles_role_check
 -- Resolve a login identifier to the auth email: returns anything that
 -- already contains '@' verbatim; otherwise treats it as a username and
 -- looks it up in profiles.email.
-create or replace function public.resolve_login(p_identifier text)
-returns text
-language sql
-stable
-security definer
-set search_path = public
-as $$
-    select case
-        when p_identifier like '%@%' then p_identifier
-        else (select email from public.profiles where username = trim(p_identifier) limit 1)
-    end;
-$$;
 
 -- Create an auth account (internal email + username + password + role).
 -- Only an existing admin may call it. On success the handle_new_user
 -- trigger provisions the avatar/profile row; we then set the chosen role.
-create or replace function public.create_user(
-    p_email    text,      -- generated email, kept out of the UI
-    p_password text,
-    p_username text,
-    p_role     text default 'viewer'
-)
-returns json
-language plpgsql
-security definer
-set search_path = public, pg_catalog, pg_temp, extensions
-as $$
-declare
-    v_user_id  uuid;
-    v_enc_pw   text;
-    v_email    text;
-    v_username text;
-begin
-    if public.current_app_role() != 'admin' then
-        raise exception 'هذه العملية مقصورة على المدير';
-    end if;
-    if p_role not in ('data_entry', 'viewer') then
-        raise exception 'الصلاحية غير صالحة';
-    end if;
-    v_username := trim(coalesce(p_username, ''));
-    if v_username = '' then
-        raise exception 'يرجى إدخال اسم المستخدم';
-    end if;
-    if char_length(coalesce(p_password, '')) < 6 then
-        raise exception 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
-    end if;
-    if exists (select 1 from public.profiles where username = v_username) then
-        raise exception 'هذا الاسم مسجل مسبقاً للمستخدمين';
-    end if;
-
-    -- Generate an internal-only email. The username columns of profiles
-    -- are what the app actually shows; the email is never surfaced.
-    v_email    := 'wqf-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12) || '@internal.local';
-    v_user_id  := gen_random_uuid();
-    v_enc_pw   := extensions.crypt(p_password, extensions.gen_salt('bf'));
-
-    insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
-                            email_confirmed_at, created_at, updated_at,
-                            confirmation_token, recovery_token,
-                            email_change_token_new, email_change, raw_app_meta_data,
-                            raw_user_meta_data, is_super_admin)
-    values ('00000000-0000-0000-0000-000000000000', v_user_id, 'authenticated', 'authenticated',
-            v_email, v_enc_pw, now(), now(), now(),
-            '', '', '', '', '{"provider":"email","providers":["email"]}',
-            jsonb_build_object('username', v_username, 'role', p_role), false);
-
-    insert into auth.identities (provider_id, user_id, identity_data, provider, last_sign_in_at,
-                                 created_at, updated_at, id)
-    values (v_email, v_user_id,
-            jsonb_build_object('sub', v_user_id::text, 'email', v_email),
-            'email', now(), now(), now(), v_user_id);
-
-    update public.profiles set role = p_role where id = v_user_id;
-
-    return json_build_object('id', v_user_id, 'email', v_email, 'username', v_username);
-end;
-$$;
 
 grant execute on function public.resolve_login(text)                to anon, authenticated;
 grant execute on function public.create_user(text, text, text, text) to authenticated;
@@ -1837,30 +1314,6 @@ begin
 end;
 $$;
 
-create or replace function public.list_year_archives()
-returns jsonb
-language sql
-stable
-security definer
-set search_path = public
-as $$
-    select coalesce(jsonb_agg(jsonb_build_object(
-               'year', ya.year, 'frozenAt', ya.frozen_at,
-               'frozenBy', ya.frozen_by,
-               'employeesCount', jsonb_array_length(ya.snapshot->'employees')
-           ) order by ya.year desc), '[]'::jsonb)
-    from public.year_archives ya;
-$$;
-
-create or replace function public.get_year_archive(p_year text)
-returns jsonb
-language sql
-stable
-security definer
-set search_path = public
-as $$
-    select snapshot from public.year_archives where year = p_year;
-$$;
 
 alter table public.year_archives enable row level security;
 drop policy if exists "admins_read_year_archives" on public.year_archives;
@@ -1945,14 +1398,33 @@ begin
 
     v_cur_year := to_char((now() at time zone 'Africa/Tripoli')::date, 'YYYY');
 
-    select coalesce(emp.initial_carried_forward, 0)
-         + coalesce(sum(
-               case when ey.year = v_cur_year and emp.is_unpaid_leave
-                    then 0 else coalesce(ey.added, 0) end
-               - coalesce(ey.deducted, 0)), 0)
-      into v_balance
-      from public.employee_years ey
-     where ey.employee_id = p_employee_id;
+    if emp.carryover_ceiled_at_year is not null
+       and emp.ceiled_cumulative_balance is not null
+    then
+        -- Start from the ceiled carry-over and count only the years from
+        -- the ceiling forward — precisely what computeYearlyLedger does
+        -- when it swaps `opening` for the ceiled figure and carries on.
+        -- Counting earlier years again here would add the very balance
+        -- the ceiled figure already represents.
+        select emp.ceiled_cumulative_balance
+             + coalesce(sum(
+                   case when ey.year = v_cur_year and emp.is_unpaid_leave
+                        then 0 else coalesce(ey.added, 0) end
+                   - coalesce(ey.deducted, 0)), 0)
+          into v_balance
+          from public.employee_years ey
+         where ey.employee_id = p_employee_id
+           and ey.year >= emp.carryover_ceiled_at_year;
+    else
+        select coalesce(emp.initial_carried_forward, 0)
+             + coalesce(sum(
+                   case when ey.year = v_cur_year and emp.is_unpaid_leave
+                        then 0 else coalesce(ey.added, 0) end
+                   - coalesce(ey.deducted, 0)), 0)
+          into v_balance
+          from public.employee_years ey
+         where ey.employee_id = p_employee_id;
+    end if;
 
     return round(v_balance, 2);
 end;
@@ -2028,13 +1500,13 @@ security definer
 set search_path = public
 as $$
 declare
-    v_cur_year text := to_char((now() at time zone 'Africa/Tripoli')::date, 'YYYY');
+    v_today    date := (now() at time zone 'Africa/Tripoli')::date;
+    v_cur_year text := to_char(v_today, 'YYYY');
+    v_from     text := (extract(year from v_today)::int - 1)::text;
     v_created  int  := 0;
     v_fixed    int  := 0;
     v_blocked  jsonb;
 begin
-    -- Grant the year to an active employee who has no row for it — the
-    -- archived-then-restored case add_year() could never have seen.
     insert into public.employee_years (employee_id, year, added, deducted)
     select e.id, y.year,
            public.year_allocation(y.year, e.over_45, e.hire_date_current_year,
@@ -2064,7 +1536,7 @@ begin
          where e.is_archived = false
            and coalesce(y.is_archived, false) = false
            and ey.year ~ '^\d{4}$'
-           and ey.year >= v_cur_year
+           and ey.year >= v_from
            and (p_employee_ids is null or ey.employee_id = any(p_employee_ids))
     ),
     changed as (
@@ -2072,6 +1544,7 @@ begin
                        then 0 else owed - stored end as delta
           from cand
          where owed is distinct from stored
+           and (year >= v_cur_year or owed > stored)   -- past years: upward only
     ),
     solvent as (
         select c.employee_id
@@ -2089,8 +1562,6 @@ begin
     )
     select count(*) into v_fixed from applied;
 
-    -- Whatever still mismatches is, by construction, a row the guard
-    -- refused. Report the resulting net so the reason is visible.
     select coalesce(jsonb_agg(jsonb_build_object(
                'employee',   e.name,
                'job_number', coalesce(e.job_number, ''),
@@ -2110,7 +1581,7 @@ begin
      where e.is_archived = false
        and coalesce(y.is_archived, false) = false
        and ey.year ~ '^\d{4}$'
-       and ey.year >= v_cur_year
+       and ey.year >= v_cur_year        -- only the live year is reported
        and (p_employee_ids is null or ey.employee_id = any(p_employee_ids))
        and v.owed is distinct from ey.added;
 
@@ -2164,10 +1635,50 @@ security definer
 set search_path = public
 as $$
 declare
-    v_cur_year text := to_char((now() at time zone 'Africa/Tripoli')::date, 'YYYY');
+    v_today    date := (now() at time zone 'Africa/Tripoli')::date;
+    v_cur_year text := to_char(v_today, 'YYYY');
+    v_from     text := (extract(year from v_today)::int - 1)::text;
     v_created  int  := 0;
     v_granted  int  := 0;
 begin
+    -- Read-only probe first. This function runs on every page load for
+    -- every signed-in user, and on all but two days of the year there is
+    -- nothing to release. Taking write locks to discover that is what
+    -- turns eight o'clock on a Sunday into row contention.
+    if not exists (
+        select 1
+          from public.employee_years ey
+          join public.employees e on e.id = ey.employee_id
+          join public.years     y on y.year = ey.year
+         where e.is_archived = false
+           -- Deliberately NOT filtered on y.is_archived. employee_net_balance()
+           -- counts an archived year's figures like any other, so freezing its
+           -- allocation while still spending against it leaves the employee
+           -- silently short. A year hidden across 1 July or 31 December is the
+           -- exact case: archive_year() is reversible hiding, not a close, and
+           -- the balance never stopped counting it. Upward-only, and bounded to
+           -- one year back, so this can still never restate settled history.
+           and ey.year ~ '^\d{4}$'
+           and ey.year >= v_from
+           and public.allocation_due(ey.year, e.over_45, e.hire_date_current_year,
+                                     coalesce(y.default_days, 30), null) > ey.added
+    ) and not exists (
+        select 1
+          from public.employees e
+          cross join public.years y
+         where e.is_archived = false
+           and coalesce(y.is_archived, false) = false
+           and y.year ~ '^\d{4}$'
+           and y.year >= v_cur_year
+           and not exists (select 1 from public.employee_years ey
+                            where ey.employee_id = e.id and ey.year = y.year)
+    ) then
+        return jsonb_build_object('created', 0, 'granted', 0);
+    end if;
+
+    -- Missing rows are created for the CURRENT year onward only. Minting
+    -- a row for a year already closed would invent history for someone
+    -- who was not on the payroll to earn it.
     insert into public.employee_years (employee_id, year, added, deducted)
     select e.id, y.year,
            public.allocation_due(y.year, e.over_45, e.hire_date_current_year,
@@ -2183,6 +1694,8 @@ begin
     on conflict (employee_id, year) do nothing;
     get diagnostics v_created = row_count;
 
+    -- The top-up reaches back one year, and is upward-only everywhere —
+    -- which is exactly what makes reaching back safe.
     with earned as (
         select ey.id,
                ey.added as stored,
@@ -2192,9 +1705,15 @@ begin
           join public.employees e on e.id = ey.employee_id
           join public.years     y on y.year = ey.year
          where e.is_archived = false
-           and coalesce(y.is_archived, false) = false
+           -- Deliberately NOT filtered on y.is_archived. employee_net_balance()
+           -- counts an archived year's figures like any other, so freezing its
+           -- allocation while still spending against it leaves the employee
+           -- silently short. A year hidden across 1 July or 31 December is the
+           -- exact case: archive_year() is reversible hiding, not a close, and
+           -- the balance never stopped counting it. Upward-only, and bounded to
+           -- one year back, so this can still never restate settled history.
            and ey.year ~ '^\d{4}$'
-           and ey.year >= v_cur_year
+           and ey.year >= v_from
     ),
     applied as (
         update public.employee_years ey
@@ -2360,13 +1879,6 @@ begin
     -- manual allocation the stored grant IS the entitlement, so there is
     -- no longer a gap between "allocated" and "earned so far" to police.
     -- Bypassed for unpaid leave employees (their balance is 0 by design).
-    if not emp.is_unpaid_leave then
-        v_net := public.employee_net_balance(emp.id);
-        if v_days > v_net then
-            raise exception 'فشلت العملية: رصيد الموظف الحالي غير كافٍ لتغطية عدد أيام الخصم المطلوبة. الرصيد المتاح: % يوم.', v_net;
-        end if;
-    end if;
-
     -- (17) Honour the allocation the admin configured for that year
     -- instead of assuming 30.
     select coalesce(default_days, 30) into v_year_default
@@ -2377,6 +1889,21 @@ begin
             public.year_allocation(v_year, emp.over_45, emp.hire_date_current_year,
                                    coalesce(v_year_default, 30)), 0)
     on conflict (employee_id, year) do nothing;
+
+    -- The row above must exist BEFORE the balance is measured. It used to
+    -- be created afterwards, so an employee with no row for the year --
+    -- restored from the archive, or recording a December leave in January
+    -- for a year the release pass does not create rows for -- had that
+    -- year's entire grant missing from v_net. The deduction was refused
+    -- with "الرصيد المتاح: 0" for days the employee actually held. If the
+    -- deduction is rejected below, the whole transaction rolls back and
+    -- this row goes with it.
+    if not emp.is_unpaid_leave then
+        v_net := public.employee_net_balance(emp.id);
+        if v_days > v_net then
+            raise exception 'فشلت العملية: رصيد الموظف الحالي غير كافٍ لتغطية عدد أيام الخصم المطلوبة. الرصيد المتاح: % يوم.', v_net;
+        end if;
+    end if;
 
     update public.employee_years set deducted = deducted + v_days
         where employee_id = emp.id and year = v_year;
@@ -2497,6 +2024,27 @@ begin
         from public.years y
         where y.is_archived = false and y.year < v_year;
         if v_prev is not null then
+            -- Closing a year declares it finished, so the arrears rule
+            -- has no months left to wait for: settle whatever it still
+            -- owes before the snapshot freezes the figures forever.
+            -- Without this, closing 2026 on 15 December would archive
+            -- every employee at 15 days and lose the second installment
+            -- with no way to recover it. Evaluated AS OF 31 December of
+            -- that year, and only ever upward.
+            update public.employee_years ey
+               set added = public.allocation_due(ey.year, e.over_45,
+                               e.hire_date_current_year,
+                               coalesce(y.default_days, 30),
+                               make_date(ey.year::int, 12, 31))
+              from public.employees e, public.years y
+             where ey.employee_id = e.id
+               and y.year = ey.year
+               and ey.year = v_prev
+               and e.is_archived = false
+               and public.allocation_due(ey.year, e.over_45,
+                       e.hire_date_current_year, coalesce(y.default_days, 30),
+                       make_date(ey.year::int, 12, 31)) > ey.added;
+
             insert into public.year_archives (year, frozen_by, snapshot)
             values (v_prev, v_username, public.build_year_archive_snapshot(v_prev))
             on conflict (year) do update
