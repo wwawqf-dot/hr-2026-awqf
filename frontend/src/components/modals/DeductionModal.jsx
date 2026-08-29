@@ -30,8 +30,12 @@ function daysBetween(fromStr, toStr) {
 
 export default function DeductionModal({ employee, systemYears = [], onClose, onSubmit, onDeleteDeduction }) {
     const { isAdmin } = useAuth();
-    const [start, setStart] = useState('');
-    const [end, setEnd] = useState('');
+    // Both date fields open on today (Tripoli's date, not the device's),
+    // because a leave is almost always recorded on the day it is taken.
+    // The lazy initialiser form runs localTodayStr once per mount rather
+    // than on every render.
+    const [start, setStart] = useState(localTodayStr);
+    const [end, setEnd] = useState(localTodayStr);
     const [holidays, setHolidays] = useState(0);
     const [unknownDays, setUnknownDays] = useState('');
     const [note, setNote] = useState('');
@@ -49,7 +53,11 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
     const fifo = useMemo(() => computeFifoAudit(employee, years), [employee, years]);
 
     useEffect(() => {
-        setStart(''); setEnd(''); setHolidays(0);
+        // Re-read the date on every switch rather than reusing the mount
+        // value: this modal can stay open across midnight in Tripoli, and
+        // the fields should follow the calendar, not the session.
+        const today = localTodayStr();
+        setStart(today); setEnd(today); setHolidays(0);
         setUnknownDays(''); setNote(''); setError('');
         setLastSaved(null);
     }, [employee.id]);
@@ -149,7 +157,8 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
                 note: noteVal || '',
                 entitledBefore: netBalance,
             });
-            setStart(''); setEnd(''); setHolidays(0);
+            const today = localTodayStr();
+            setStart(today); setEnd(today); setHolidays(0);
             setUnknownDays(''); setNote('');
         } catch (err) {
             setError(err.message || 'حدث خطأ أثناء تسجيل الخصم');
