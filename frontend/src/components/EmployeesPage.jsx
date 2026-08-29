@@ -18,7 +18,7 @@ import { logActivity } from '../api/client';
 // shared with SettingsPage — see the comment in App.jsx for why this is
 // no longer called independently here.
 export default function EmployeesPage({ leaveData }) {
-    const { canAdd, canFreeze, canEdit } = usePermissions();
+    const { canAdd, canFreeze, canEdit, canExport } = usePermissions();
     const {
         employees, years, settings, loading, error,
         addEmployee, updateEmployee, deleteEmployee, toggleFreeze,
@@ -77,9 +77,11 @@ export default function EmployeesPage({ leaveData }) {
                 <button className="btn btn-report" onClick={() => setModal({ type: 'statement' })}>
                     كشف حساب فردي <i className="fas fa-file-invoice"></i>
                 </button>
-                <button className="btn btn-report" onClick={() => exportEmployeesToExcel(employees, years)}>
-                    <i className="fas fa-file-excel"></i> تصدير Excel
-                </button>
+                {canExport && (
+                    <button className="btn btn-report" onClick={() => exportEmployeesToExcel(employees, years)}>
+                        <i className="fas fa-file-excel"></i> تصدير Excel
+                    </button>
+                )}
                 {canFreeze && (
                     <button className="btn btn-report" onClick={() => setModal({ type: 'freeze' })}>
                         تجميد سجل موظف <i className="fas fa-snowflake"></i>
