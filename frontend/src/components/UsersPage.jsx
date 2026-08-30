@@ -5,7 +5,7 @@ import PageHeader from './PageHeader';
 import { TableSkeleton } from './SkeletonLoader';
 import CustomConfirmModal from './modals/CustomConfirmModal';
 
-const SUPER_ADMIN_EMAIL = 'abdo.shta@gmail.com';
+const SUPER_ADMIN_EMAIL = 'wqf-837dec4f6914@internal.local';
 const ROLE_LABELS = { admin: 'مدير النظام', data_entry: 'مُدخل بيانات', viewer: 'متابع' };
 const ROLE_OPTIONS = [
     { value: 'viewer', label: 'متابع', color: '#c4b5fd' },

@@ -193,7 +193,7 @@ returns text
 language sql
 immutable
 as $$
-    select 'abdo.shta@gmail.com'::text;
+    select 'wqf-837dec4f6914@internal.local'::text;
 $$;
 
 -- Internal audit writer. NOT granted to clients, so nobody can forge
