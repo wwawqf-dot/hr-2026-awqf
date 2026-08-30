@@ -29,7 +29,7 @@ function daysBetween(fromStr, toStr) {
 }
 
 export default function DeductionModal({ employee, systemYears = [], onClose, onSubmit, onDeleteDeduction }) {
-    const { isAdmin } = useAuth();
+    const { isAdmin, isSuperAdmin } = useAuth();
     // Both date fields open on today (Tripoli's date, not the device's),
     // because a leave is almost always recorded on the day it is taken.
     // The lazy initialiser form runs localTodayStr once per mount rather
@@ -67,7 +67,7 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
 
     const netBalance = computeNetBalance(employee);
     const retroDaysLive = !hasUnknownDays && start ? daysBetween(start, localTodayStr()) : null;
-    const retroBlocked = retroDaysLive !== null && retroDaysLive > RETRO_LIMIT_DAYS;
+    const retroBlocked = !isSuperAdmin && retroDaysLive !== null && retroDaysLive > RETRO_LIMIT_DAYS;
     const balanceBlocked = !employee.is_unpaid_leave && days > 0 && days > netBalance;
 
     // Time Guard: a dated deduction must fall inside the currently active
@@ -112,7 +112,7 @@ export default function DeductionModal({ employee, systemYears = [], onClose, on
             return;
         }
 
-        if (!hasUnknownDays && start) {
+        if (!hasUnknownDays && start && !isSuperAdmin) {
             const retroDays = daysBetween(start, localTodayStr());
             if (retroDays !== null && retroDays > RETRO_LIMIT_DAYS) {
                 setError('لا يمكن تسجيل إجازة بتاريخ رجعي يتجاوز 40 يوماً من تاريخ النظام الحالي.');
